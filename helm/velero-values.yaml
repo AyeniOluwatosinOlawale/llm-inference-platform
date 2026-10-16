@@ -1,0 +1,57 @@
+# FIX #K: Velero cluster-state and PVC backup.
+# Without this, a cluster rebuild from scratch requires reapplying all manifests
+# and loses any PVC data (Postgres spend log, Redis AOF, Prometheus TSDB).
+
+configuration:
+  backupStorageLocation:
+    - name: default
+      provider: aws
+      bucket: "${VELERO_BACKUP_BUCKET}"
+      config:
+        region: "${AWS_REGION}"
+        s3ForcePathStyle: "false"
+
+  volumeSnapshotLocation:
+    - name: default
+      provider: aws
+      config:
+        region: "${AWS_REGION}"
+
+  # Back up all namespaces relevant to this platform.
+  defaultBackupTTL: 720h    # 30-day retention
+
+credentials:
+  useSecret: true
+  secretContents:
+    cloud: |
+      [default]
+      aws_access_key_id=${VELERO_AWS_ACCESS_KEY_ID}
+      aws_secret_access_key=${VELERO_AWS_SECRET_ACCESS_KEY}
+
+initContainers:
+  - name: velero-plugin-for-aws
+    image: velero/velero-plugin-for-aws:v1.10.0
+    volumeMounts:
+      - mountPath: /target
+        name: plugins
+
+schedules:
+  daily-platform-backup:
+    schedule: "0 3 * * *"
+    template:
+      includedNamespaces:
+        - llm-serving
+        - llm-gateway
+        - monitoring
+      storageLocation: default
+      volumeSnapshotLocations:
+        - default
+      ttl: 720h
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi

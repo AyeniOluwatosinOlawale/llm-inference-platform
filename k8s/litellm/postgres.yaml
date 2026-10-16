@@ -106,4 +106,18 @@ spec:
           restartPolicy: OnFailure
           volumes:
             - name: backups
-              emptyDir: {}
+              persistentVolumeClaim:
+                claimName: postgres-backup-pvc
+---
+# FIX #J: PVC-backed backup storage so pg_dumps survive pod/node restarts.
+# emptyDir was lost on every pod eviction — 7-day backup retention now durable.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backup-pvc
+  namespace: llm-gateway
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 20Gi

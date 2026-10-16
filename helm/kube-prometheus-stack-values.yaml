@@ -30,6 +30,56 @@ alertmanager:
           resources:
             requests:
               storage: 5Gi
+    # FIX #H: AlertManager notification receivers — without these, alerts fire but go nowhere.
+    config:
+      global:
+        resolve_timeout: 5m
+        slack_api_url: "${SLACK_WEBHOOK_URL}"
+      templates:
+        - /etc/alertmanager/config/*.tmpl
+      route:
+        group_by: ["alertname", "namespace"]
+        group_wait: 30s
+        group_interval: 5m
+        repeat_interval: 4h
+        receiver: slack-default
+        routes:
+          - match:
+              severity: critical
+            receiver: slack-critical
+            repeat_interval: 1h
+          - match:
+              severity: warning
+            receiver: slack-default
+      receivers:
+        - name: slack-default
+          slack_configs:
+            - channel: "#llm-platform-alerts"
+              send_resolved: true
+              title: '[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .GroupLabels.alertname }}'
+              text: >-
+                {{ range .Alerts }}
+                *Alert:* {{ .Annotations.summary }}
+                *Severity:* {{ .Labels.severity }}
+                *Namespace:* {{ .Labels.namespace }}
+                {{ end }}
+        - name: slack-critical
+          slack_configs:
+            - channel: "#llm-platform-critical"
+              send_resolved: true
+              title: ':red_circle: CRITICAL: {{ .GroupLabels.alertname }}'
+              text: >-
+                {{ range .Alerts }}
+                *Alert:* {{ .Annotations.summary }}
+                *Description:* {{ .Annotations.description }}
+                *Namespace:* {{ .Labels.namespace }}
+                {{ end }}
+      inhibit_rules:
+        - source_match:
+            severity: critical
+          target_match:
+            severity: warning
+          equal: ["alertname", "namespace"]
 
 grafana:
   enabled: true

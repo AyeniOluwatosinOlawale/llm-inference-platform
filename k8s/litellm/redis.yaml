@@ -74,7 +74,21 @@ spec:
           configMap:
             name: redis-config
         - name: data
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: redis-data-pvc
+---
+# FIX #F (caveat): PVC-backed Redis data — AOF survives node drain/failure.
+# emptyDir survived pod restarts but not node evictions; this closes that gap.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data-pvc
+  namespace: llm-gateway
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
 ---
 apiVersion: v1
 kind: Service

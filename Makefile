@@ -3,7 +3,7 @@
 # Lab integration: inference-optimizer-lab2 (VLLMClient / SGLangClient)
 
 .PHONY: help secrets up-runpod up-vastai \
-        deploy-base deploy-infra verify-metrics \
+        deploy-base deploy-infra deploy-velero verify-metrics \
         deploy-vllm deploy-sglang deploy-litellm deploy-dashboards \
         health-check load-test \
         benchmark-lab benchmark-prod benchmark-compare \
@@ -30,6 +30,7 @@ help:
 	@echo "  Deploy (in order)"
 	@echo "    make deploy-base    Namespaces + NetworkPolicies"
 	@echo "    make deploy-infra   Prometheus, KEDA, Traefik, Loki"
+	@echo "    make deploy-velero  Velero cluster + PVC backup (FIX K)"
 	@echo "    make verify-metrics Confirm vLLM/SGLang metric labels"
 	@echo "    make deploy-vllm    Llama3 + Qwen3 on vLLM v0.30.0"
 	@echo "    make deploy-sglang  Llama3 + Qwen3 on SGLang v0.5.20"
@@ -95,6 +96,18 @@ deploy-infra:
 		--namespace monitoring \
 		-f k8s/monitoring/loki/values.yaml \
 		--values helm/loki-stack-values.yaml
+
+# FIX #K: Velero cluster-state + PVC backup. Run once after deploy-infra.
+deploy-velero:
+	@echo "==> Installing Velero for cluster-state and PVC backups..."
+	helm repo add vmware-tanzu https://vmware-tanzu.github.io/helm-charts
+	helm repo update
+	helm upgrade --install velero vmware-tanzu/velero \
+		--namespace velero --create-namespace \
+		--values helm/velero-values.yaml \
+		--set configuration.backupStorageLocation[0].config.region="$(AWS_REGION)" \
+		--set configuration.backupStorageLocation[0].bucket="$(VELERO_BACKUP_BUCKET)" \
+		--set credentials.secretContents.cloud="[default]\naws_access_key_id=$(VELERO_AWS_ACCESS_KEY_ID)\naws_secret_access_key=$(VELERO_AWS_SECRET_ACCESS_KEY)"
 
 verify-metrics:
 	@bash scripts/verify-metrics.sh

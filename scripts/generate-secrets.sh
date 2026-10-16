@@ -25,6 +25,15 @@ REDIS_PASSWORD=${REDIS_PASSWORD}
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 GRAFANA_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
 DATABASE_URL=postgresql://litellm:${POSTGRES_PASSWORD}@postgres-service.llm-gateway.svc.cluster.local:5432/litellm
+
+# FIX #H: AlertManager Slack notifications — set your Slack incoming webhook URL.
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/REPLACE_ME
+
+# FIX #K: Velero backup storage — set S3 bucket and AWS credentials for backup target.
+VELERO_BACKUP_BUCKET=llm-inference-platform-velero-backups
+AWS_REGION=us-east-1
+VELERO_AWS_ACCESS_KEY_ID=REPLACE_ME
+VELERO_AWS_SECRET_ACCESS_KEY=REPLACE_ME
 EOF
 
 chmod 600 "$OUT"
