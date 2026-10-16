@@ -85,7 +85,8 @@ deploy-infra:
 	helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
 		--namespace monitoring --create-namespace \
 		--values helm/kube-prometheus-stack-values.yaml \
-		--set grafana.adminPassword="$(GRAFANA_ADMIN_PASSWORD)"
+		--set grafana.adminPassword="$(GRAFANA_ADMIN_PASSWORD)" \
+		--set alertmanager.alertmanagerSpec.config.global.slack_api_url="$(SLACK_WEBHOOK_URL)"
 	helm upgrade --install keda kedacore/keda \
 		--namespace keda --create-namespace \
 		--values helm/keda-values.yaml
@@ -97,8 +98,14 @@ deploy-infra:
 		-f k8s/monitoring/loki/values.yaml \
 		--values helm/loki-stack-values.yaml
 
-# FIX #K: Velero cluster-state + PVC backup. Run once after deploy-infra.
+# Optional: Velero cluster-state + PVC backup. Requires S3 bucket + AWS credentials.
+# Skip this target if you don't have AWS set up — Postgres and Redis PVCs still persist locally.
 deploy-velero:
+	@if [ -z "$(VELERO_BACKUP_BUCKET)" ] || [ "$(VELERO_BACKUP_BUCKET)" = "REPLACE_ME" ]; then \
+		echo "Skipping Velero — VELERO_BACKUP_BUCKET not set in .env.secrets."; \
+		echo "Postgres and Redis data are still persisted on PVCs."; \
+		exit 0; \
+	fi
 	@echo "==> Installing Velero for cluster-state and PVC backups..."
 	helm repo add vmware-tanzu https://vmware-tanzu.github.io/helm-charts
 	helm repo update
