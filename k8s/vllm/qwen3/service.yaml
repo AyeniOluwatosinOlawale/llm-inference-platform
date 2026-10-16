@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: qwen3-service
+  namespace: llm-serving
+  labels:
+    app: vllm-qwen3
+spec:
+  selector:
+    app: vllm-qwen3
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP

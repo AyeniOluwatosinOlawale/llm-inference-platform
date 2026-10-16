@@ -1,0 +1,158 @@
+# FIX #13: Grafana dashboards provisioned as ConfigMaps — no manual creation needed.
+# The kube-prometheus-stack sidecar reads these and auto-imports them.
+# Three dashboards: engine comparison (main), GPU utilization, gateway health.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-engine-comparison
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  engine-comparison.json: |
+    {
+      "title": "vLLM vs SGLang — Live Comparison",
+      "uid": "engine-compare",
+      "tags": ["llm", "vllm", "sglang"],
+      "time": {"from": "now-1h", "to": "now"},
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1, "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "title": "Request Queue Depth — vLLM vs SGLang",
+          "targets": [
+            {"expr": "sum(vllm:num_requests_waiting) by (model_name)", "legendFormat": "vLLM {{model_name}}"},
+            {"expr": "sum(sglang:num_queue_reqs) by (model_name)", "legendFormat": "SGLang {{model_name}}"}
+          ]
+        },
+        {
+          "id": 2, "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "title": "KV-Cache Utilization %",
+          "fieldConfig": {"defaults": {"unit": "percentunit", "max": 1}},
+          "targets": [
+            {"expr": "avg(vllm:gpu_cache_usage_perc) by (model_name)", "legendFormat": "vLLM {{model_name}}"},
+            {"expr": "avg(sglang:gpu_cache_usage_perc) by (model_name)", "legendFormat": "SGLang {{model_name}}"}
+          ]
+        },
+        {
+          "id": 3, "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "title": "Running Requests",
+          "targets": [
+            {"expr": "sum(vllm:num_requests_running) by (model_name)", "legendFormat": "vLLM {{model_name}}"},
+            {"expr": "sum(sglang:num_running_reqs) by (model_name)", "legendFormat": "SGLang {{model_name}}"}
+          ]
+        },
+        {
+          "id": 4, "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "title": "Throughput (tokens/s)",
+          "fieldConfig": {"defaults": {"unit": "reqps"}},
+          "targets": [
+            {"expr": "rate(vllm:generation_tokens_total[1m])", "legendFormat": "vLLM tok/s"},
+            {"expr": "rate(sglang:new_generated_tokens_total[1m])", "legendFormat": "SGLang tok/s"}
+          ]
+        }
+      ]
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-gpu
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  gpu-utilization.json: |
+    {
+      "title": "GPU Utilization (DCGM)",
+      "uid": "gpu-dcgm",
+      "tags": ["gpu", "dcgm"],
+      "time": {"from": "now-1h", "to": "now"},
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1, "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "title": "GPU SM Utilization %",
+          "fieldConfig": {"defaults": {"unit": "percentunit", "max": 1}},
+          "targets": [
+            {"expr": "DCGM_FI_DEV_GPU_UTIL / 100", "legendFormat": "GPU {{gpu}} ({{pod}})"}
+          ]
+        },
+        {
+          "id": 2, "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "title": "GPU Memory Used (GiB)",
+          "fieldConfig": {"defaults": {"unit": "decbytes"}},
+          "targets": [
+            {"expr": "DCGM_FI_DEV_FB_USED * 1048576", "legendFormat": "GPU {{gpu}} ({{pod}})"}
+          ]
+        },
+        {
+          "id": 3, "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "title": "GPU Power Draw (W)",
+          "fieldConfig": {"defaults": {"unit": "watt"}},
+          "targets": [
+            {"expr": "DCGM_FI_DEV_POWER_USAGE", "legendFormat": "GPU {{gpu}}"}
+          ]
+        },
+        {
+          "id": 4, "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "title": "GPU Temperature (°C)",
+          "targets": [
+            {"expr": "DCGM_FI_DEV_GPU_TEMP", "legendFormat": "GPU {{gpu}}"}
+          ]
+        }
+      ]
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-gateway
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  litellm-gateway.json: |
+    {
+      "title": "LiteLLM Gateway",
+      "uid": "litellm-gw",
+      "tags": ["litellm", "gateway"],
+      "time": {"from": "now-1h", "to": "now"},
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1, "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "title": "Request Rate (req/s)",
+          "fieldConfig": {"defaults": {"unit": "reqps"}},
+          "targets": [
+            {"expr": "rate(litellm_requests_total[1m])", "legendFormat": "{{model}}"}
+          ]
+        },
+        {
+          "id": 2, "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "title": "Latency p50 / p99 (ms)",
+          "fieldConfig": {"defaults": {"unit": "ms"}},
+          "targets": [
+            {"expr": "histogram_quantile(0.50, rate(litellm_request_duration_seconds_bucket[5m])) * 1000", "legendFormat": "p50"},
+            {"expr": "histogram_quantile(0.99, rate(litellm_request_duration_seconds_bucket[5m])) * 1000", "legendFormat": "p99"}
+          ]
+        },
+        {
+          "id": 3, "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "title": "Cache Hit Rate",
+          "fieldConfig": {"defaults": {"unit": "percentunit"}},
+          "targets": [
+            {"expr": "rate(litellm_cache_hits_total[5m]) / rate(litellm_requests_total[5m])", "legendFormat": "Hit rate"}
+          ]
+        },
+        {
+          "id": 4, "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "title": "Error Rate",
+          "fieldConfig": {"defaults": {"unit": "percentunit"}},
+          "targets": [
+            {"expr": "rate(litellm_errors_total[5m]) / rate(litellm_requests_total[5m])", "legendFormat": "Error rate"}
+          ]
+        }
+      ]
+    }

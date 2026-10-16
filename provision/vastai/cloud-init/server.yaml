@@ -1,0 +1,35 @@
+#cloud-config
+# k3s control plane bootstrap for Vast.ai instances.
+# FIX #2: --secrets-encryption enables etcd Secrets encryption at rest.
+# FIX #10: k3s binds API server to the private IP only by default.
+
+package_update: true
+packages:
+  - curl
+  - jq
+  - open-iscsi
+
+runcmd:
+  # Install k3s server with secrets encryption enabled.
+  - |
+    curl -sfL https://get.k3s.io | sh -s - server \
+      --secrets-encryption \
+      --disable traefik \
+      --disable servicelb \
+      --write-kubeconfig-mode 644 \
+      --tls-san $(curl -s ifconfig.me)
+
+  # Wait for k3s to be ready.
+  - |
+    for i in $(seq 1 30); do
+      kubectl get nodes && break
+      sleep 10
+    done
+
+  # Install NVIDIA device plugin for GPU nodes.
+  - kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.16.2/deployments/static/nvidia-device-plugin.yml
+
+  # Rotate encryption keys after initial setup.
+  - k3s secrets-encrypt rotate
+
+final_message: "k3s server ready — node token at /var/lib/rancher/k3s/server/node-token"

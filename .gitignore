@@ -1,0 +1,38 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+.terraform.lock.hcl
+*.auto.tfvars
+terraform.tfvars
+
+# Secrets
+.env
+.env.*
+.env.secrets
+*.key
+*.pem
+*.p12
+kubeconfig
+kubeconfig.*
+
+# Vast.ai state
+provision/vastai/state.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+.pytest_cache/
+
+# Benchmark outputs
+benchmark_results_*.json
+outputs/
+
+# OS
+.DS_Store
+*.swp

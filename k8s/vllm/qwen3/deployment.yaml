@@ -1,0 +1,151 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-qwen3
+  namespace: llm-serving
+  labels:
+    app: vllm-qwen3
+    model: qwen3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-qwen3
+  template:
+    metadata:
+      labels:
+        app: vllm-qwen3
+        model: qwen3
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: vllm-qwen3
+
+      initContainers:
+        - name: model-pull
+          image: huggingface/downloader:latest
+          command:
+            - sh
+            - -c
+            - |
+              if [ -d /models/qwen3 ]; then
+                echo "Model cache hit — skipping download"
+                exit 0
+              fi
+              huggingface-cli download \
+                Qwen/Qwen3-8B-Instruct \
+                --local-dir /models/qwen3
+          volumeMounts:
+            - name: model-cache
+              mountPath: /models
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:v0.30.0
+          command:
+            - python
+            - -m
+            - vllm.entrypoints.openai.api_server
+          args:
+            - --model=/models/qwen3
+            # FIX #1: label matches KEDA ScaledObject trigger query model_name="qwen3"
+            - --served-model-name=qwen3
+            # fp8 reduces VRAM to ~8 GB on Qwen3-8B, freeing headroom for KV cache.
+            # Note: fp8 compute is most efficient on H100/L4; on RTX 4090 it falls
+            # back to fp16 compute with fp8 storage — still reduces peak VRAM.
+            - --quantization=fp8
+            - --max-model-len=8192
+            - --gpu-memory-utilization=0.90
+            - --enable-prefix-caching
+            - --tensor-parallel-size=1
+            - --port=8000
+            - --host=0.0.0.0
+          ports:
+            - containerPort: 8000
+              name: http
+
+          # FIX #8: generous startupProbe budget (10 min)
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            failureThreshold: 40
+            periodSeconds: 15
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 10
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 30
+            failureThreshold: 3
+
+          lifecycle:
+            # FIX #8: || true makes warmup best-effort — pod stays alive on warmup failure
+            postStart:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - |
+                    sleep 5
+                    curl -sf http://localhost:8000/v1/completions \
+                      -H "Content-Type: application/json" \
+                      -d '{"model":"qwen3","prompt":"Hello","max_tokens":1}' || true
+            preStop:
+              exec:
+                command: ["sleep", "60"]
+
+          env:
+            - name: CUDA_VISIBLE_DEVICES
+              value: "0"
+
+          resources:
+            requests:
+              cpu: "4"
+              memory: 16Gi
+            limits:
+              cpu: "8"
+              memory: 24Gi
+              nvidia.com/gpu: "1"
+
+          volumeMounts:
+            - name: model-cache
+              mountPath: /models
+            - name: shm
+              mountPath: /dev/shm
+
+      volumes:
+        - name: model-cache
+          hostPath:
+            path: /var/lib/models
+            type: DirectoryOrCreate
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Gi
+
+      terminationGracePeriodSeconds: 120

@@ -1,0 +1,28 @@
+# FIX #1: model_name="qwen3" matches --served-model-name=qwen3 in deployment.yaml.
+# Run `make verify-metrics` before applying to confirm the exact label emitted.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: vllm-qwen3-scaler
+  namespace: llm-serving
+spec:
+  scaleTargetRef:
+    name: vllm-qwen3
+  minReplicaCount: 1
+  maxReplicaCount: 4
+  cooldownPeriod: 300
+  pollingInterval: 30
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        metricName: vllm_num_requests_waiting_qwen3
+        query: sum(vllm:num_requests_waiting{model_name="qwen3"})
+        threshold: "5"
+
+    - type: prometheus
+      metadata:
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        metricName: vllm_gpu_cache_usage_qwen3
+        query: avg(vllm:gpu_cache_usage_perc{model_name="qwen3"}) * 100
+        threshold: "80"

@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-config
+  namespace: llm-gateway
+data:
+  config.yaml: |
+    model_list:
+      # ── vLLM backends ─────────────────────────────────────────────────────────
+      - model_name: llama3-vllm
+        litellm_params:
+          model: openai/llama3
+          api_base: http://llama3-vllm-service.llm-serving.svc.cluster.local:8000/v1
+          api_key: "none"
+          rpm: 60
+          input_cost_per_token: 0.0000002
+          output_cost_per_token: 0.0000002
+
+      - model_name: qwen3-vllm
+        litellm_params:
+          model: openai/qwen3
+          api_base: http://qwen3-vllm-service.llm-serving.svc.cluster.local:8000/v1
+          api_key: "none"
+          rpm: 60
+          input_cost_per_token: 0.0000002
+          output_cost_per_token: 0.0000002
+
+      # ── SGLang backends ────────────────────────────────────────────────────────
+      - model_name: llama3-sglang
+        litellm_params:
+          model: openai/llama3-sglang
+          api_base: http://llama3-sglang-service.llm-serving.svc.cluster.local:30000/v1
+          api_key: "none"
+          rpm: 60
+          input_cost_per_token: 0.0000002
+          output_cost_per_token: 0.0000002
+
+      - model_name: qwen3-sglang
+        litellm_params:
+          model: openai/qwen3-sglang
+          api_base: http://qwen3-sglang-service.llm-serving.svc.cluster.local:30000/v1
+          api_key: "none"
+          rpm: 60
+          input_cost_per_token: 0.0000002
+          output_cost_per_token: 0.0000002
+
+      # ── Virtual aliases (round-robin across both engines) ──────────────────────
+      # Use these when you want LiteLLM to load-balance between vLLM and SGLang
+      # automatically. Great for A/B traffic splitting in production.
+      - model_name: llama3
+        litellm_params:
+          model: openai/llama3
+          api_base: http://llama3-vllm-service.llm-serving.svc.cluster.local:8000/v1
+          api_key: "none"
+      - model_name: llama3
+        litellm_params:
+          model: openai/llama3-sglang
+          api_base: http://llama3-sglang-service.llm-serving.svc.cluster.local:30000/v1
+          api_key: "none"
+
+      - model_name: qwen3
+        litellm_params:
+          model: openai/qwen3
+          api_base: http://qwen3-vllm-service.llm-serving.svc.cluster.local:8000/v1
+          api_key: "none"
+      - model_name: qwen3
+        litellm_params:
+          model: openai/qwen3-sglang
+          api_base: http://qwen3-sglang-service.llm-serving.svc.cluster.local:30000/v1
+          api_key: "none"
+
+    router_settings:
+      routing_strategy: least-busy
+      fallbacks:
+        - llama3-vllm: ["llama3-sglang"]
+        - llama3-sglang: ["llama3-vllm"]
+        - qwen3-vllm: ["qwen3-sglang"]
+        - qwen3-sglang: ["qwen3-vllm"]
+      num_retries: 2
+      retry_after: 5
+      timeout: 120
+
+    litellm_settings:
+      cache: true
+      cache_params:
+        type: redis
+        host: redis-service.llm-gateway.svc.cluster.local
+        port: 6379
+        password: "${REDIS_PASSWORD}"
+        ttl: 3600
+
+      success_callback: ["prometheus"]
+      failure_callback: ["prometheus"]
+      set_verbose: false
+
+    general_settings:
+      master_key: "${LITELLM_MASTER_KEY}"
+      database_url: "${DATABASE_URL}"
+      store_model_in_db: true

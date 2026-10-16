@@ -1,0 +1,16 @@
+{
+  "apiVersion": "1",
+  "providers": [
+    {
+      "name": "llm-platform-dashboards",
+      "orgId": 1,
+      "folder": "LLM Platform",
+      "type": "file",
+      "disableDeletion": false,
+      "updateIntervalSeconds": 30,
+      "options": {
+        "path": "/var/lib/grafana/dashboards/llm-platform"
+      }
+    }
+  ]
+}

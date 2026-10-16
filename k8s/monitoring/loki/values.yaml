@@ -1,0 +1,66 @@
+# FIX #14: Log aggregation — the reference platform had no log shipping at all.
+# Loki + FluentBit collect container logs from llm-serving and llm-gateway.
+loki:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 20Gi
+  config:
+    limits_config:
+      retention_period: 168h  # 7 days
+    schema_config:
+      configs:
+        - from: "2024-01-01"
+          store: boltdb-shipper
+          object_store: filesystem
+          schema: v11
+          index:
+            prefix: index_
+            period: 24h
+
+fluent-bit:
+  enabled: true
+  config:
+    inputs: |
+      [INPUT]
+          Name              tail
+          Tag               kube.*
+          Path              /var/log/containers/*llm-serving*.log,/var/log/containers/*llm-gateway*.log
+          Parser            docker
+          DB                /run/fluent-bit/flb_kube.db
+          Mem_Buf_Limit     50MB
+          Skip_Long_Lines   On
+          Refresh_Interval  10
+
+    filters: |
+      [FILTER]
+          Name                kubernetes
+          Match               kube.*
+          Kube_URL            https://kubernetes.default.svc:443
+          Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
+          Kube_Tag_Prefix     kube.var.log.containers.
+          Merge_Log           On
+          Keep_Log            Off
+          K8S-Logging.Parser  On
+          K8S-Logging.Exclude On
+
+      # Drop high-cardinality vLLM token-level debug lines to avoid log explosion.
+      [FILTER]
+          Name    grep
+          Match   kube.*
+          Exclude log .*token_ids.*
+
+    outputs: |
+      [OUTPUT]
+          Name            loki
+          Match           kube.*
+          Host            loki.monitoring.svc.cluster.local
+          Port            3100
+          Labels          job=fluentbit, namespace=$kubernetes['namespace_name'], pod=$kubernetes['pod_name'], engine=$kubernetes['labels']['engine']
+          Label_Keys      $stream,$kubernetes['pod_name']
+          Auto_Kubernetes_Labels On
+          Line_Format     json
+
+grafana:
+  enabled: false  # managed by kube-prometheus-stack

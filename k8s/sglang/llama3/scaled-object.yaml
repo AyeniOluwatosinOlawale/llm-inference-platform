@@ -1,0 +1,29 @@
+# FIX #1: SGLang v0.5 exposes sglang:num_queue_reqs and sglang:gpu_cache_usage_perc.
+# Run `make verify-metrics` to confirm exact label names before applying.
+# served-model-name=llama3-sglang in deployment.yaml sets the model label.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: sglang-llama3-scaler
+  namespace: llm-serving
+spec:
+  scaleTargetRef:
+    name: sglang-llama3
+  minReplicaCount: 1
+  maxReplicaCount: 4
+  cooldownPeriod: 300
+  pollingInterval: 30
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        metricName: sglang_num_queue_reqs_llama3
+        query: sum(sglang:num_queue_reqs{model_name="llama3-sglang"})
+        threshold: "5"
+
+    - type: prometheus
+      metadata:
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        metricName: sglang_gpu_cache_usage_llama3
+        query: avg(sglang:gpu_cache_usage_perc{model_name="llama3-sglang"}) * 100
+        threshold: "80"

@@ -1,0 +1,162 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-llama3
+  namespace: llm-serving
+  labels:
+    app: vllm-llama3
+    model: llama3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-llama3
+  template:
+    metadata:
+      labels:
+        app: vllm-llama3
+        model: llama3
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: vllm-llama3
+
+      initContainers:
+        # Download model weights to local NVMe on first boot.
+        # FIX #4: per-node hostPath cache eliminates shared-NFS burst throttling entirely.
+        - name: model-pull
+          image: huggingface/downloader:latest
+          command:
+            - sh
+            - -c
+            - |
+              if [ -d /models/llama3 ]; then
+                echo "Model cache hit — skipping download"
+                exit 0
+              fi
+              huggingface-cli download \
+                meta-llama/Meta-Llama-3.1-8B-Instruct-AWQ \
+                --local-dir /models/llama3 \
+                --token "$HF_TOKEN"
+          env:
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: platform-secrets
+                  key: HUGGINGFACE_TOKEN
+          volumeMounts:
+            - name: model-cache
+              mountPath: /models
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:v0.30.0
+          command:
+            - python
+            - -m
+            - vllm.entrypoints.openai.api_server
+          args:
+            - --model=/models/llama3
+            # FIX #1: --served-model-name must exactly match the label used in KEDA ScaledObject.
+            # verify-metrics.sh confirms this after first pod start.
+            - --served-model-name=llama3
+            - --quantization=awq
+            - --max-model-len=8192
+            - --gpu-memory-utilization=0.90
+            - --enable-prefix-caching
+            - --tensor-parallel-size=1
+            - --port=8000
+            - --host=0.0.0.0
+          ports:
+            - containerPort: 8000
+              name: http
+
+          # FIX #8: startupProbe with a generous budget (10 min) replaces the
+          # fragile initialDelaySeconds approach that caused premature liveness kills.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            failureThreshold: 40
+            periodSeconds: 15
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 0
+            periodSeconds: 10
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 0
+            periodSeconds: 30
+            failureThreshold: 3
+
+          lifecycle:
+            # FIX #8: warmup is best-effort — || true prevents hook failure from
+            # killing the container before it passes the startupProbe.
+            postStart:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - |
+                    sleep 5
+                    curl -sf http://localhost:8000/v1/completions \
+                      -H "Content-Type: application/json" \
+                      -d '{"model":"llama3","prompt":"Hello","max_tokens":1}' || true
+            preStop:
+              exec:
+                command: ["sleep", "60"]
+
+          env:
+            - name: CUDA_VISIBLE_DEVICES
+              value: "0"
+
+          resources:
+            requests:
+              cpu: "4"
+              memory: 16Gi
+            limits:
+              cpu: "8"
+              memory: 24Gi
+              nvidia.com/gpu: "1"
+
+          volumeMounts:
+            - name: model-cache
+              mountPath: /models
+            - name: shm
+              mountPath: /dev/shm
+
+      volumes:
+        - name: model-cache
+          hostPath:
+            path: /var/lib/models
+            type: DirectoryOrCreate
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Gi
+
+      terminationGracePeriodSeconds: 120

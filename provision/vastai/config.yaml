@@ -1,0 +1,30 @@
+# Vast.ai instance requirements for the LLM inference platform.
+# Adjust min_gpu_vram and gpu_name to match available inventory.
+
+control_plane:
+  num_gpus: 0
+  min_cpu_cores: 4
+  min_ram_gb: 16
+  min_disk_gb: 40
+  image: "ubuntu:22.04"
+  # k3s server bootstraps from cloud-init/server.yaml
+
+gpu_workers:
+  count: 2
+  num_gpus: 1
+  gpu_names:            # in priority order
+    - "RTX 4090"
+    - "A40"
+    - "RTX 3090"
+    - "A10"
+  min_gpu_vram_gb: 24
+  min_cpu_cores: 8
+  min_ram_gb: 32
+  min_disk_gb: 100      # local NVMe for model weight cache
+  image: "nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04"
+  on_demand: true       # never use interruptible for GPU serving
+
+# Datacenter preferences (latency and availability)
+preferred_datacenters:
+  - "US"
+  - "EU"

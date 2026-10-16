@@ -1,0 +1,16 @@
+loki:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 20Gi
+  serviceMonitor:
+    enabled: true
+
+fluent-bit:
+  enabled: true
+
+grafana:
+  enabled: false  # reuse the grafana from kube-prometheus-stack
+
+prometheus:
+  enabled: false  # reuse existing prometheus

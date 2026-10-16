@@ -1,0 +1,42 @@
+deployment:
+  replicas: 2
+
+ingressRoute:
+  dashboard:
+    enabled: false
+
+providers:
+  kubernetesCRD:
+    enabled: true
+    allowCrossNamespace: true
+  kubernetesIngress:
+    enabled: true
+    publishedService:
+      enabled: true
+
+ports:
+  web:
+    redirectTo:
+      port: websecure
+  websecure:
+    tls:
+      enabled: true
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: ayenioluwatosinolawale@gmail.com
+      storage: /data/acme.json
+      tlsChallenge: {}
+
+persistence:
+  enabled: true
+  size: 1Gi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi

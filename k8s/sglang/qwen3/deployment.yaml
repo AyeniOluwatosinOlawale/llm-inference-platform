@@ -1,0 +1,151 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sglang-qwen3
+  namespace: llm-serving
+  labels:
+    app: sglang-qwen3
+    model: qwen3
+    engine: sglang
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sglang-qwen3
+  template:
+    metadata:
+      labels:
+        app: sglang-qwen3
+        model: qwen3
+        engine: sglang
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "30000"
+        prometheus.io/path: "/metrics"
+    spec:
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: sglang-qwen3
+
+      initContainers:
+        - name: model-pull
+          image: huggingface/downloader:latest
+          command:
+            - sh
+            - -c
+            - |
+              if [ -d /models/qwen3 ]; then
+                echo "Model cache hit — skipping download"
+                exit 0
+              fi
+              huggingface-cli download \
+                Qwen/Qwen3-8B-Instruct \
+                --local-dir /models/qwen3
+          volumeMounts:
+            - name: model-cache
+              mountPath: /models
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi
+
+      containers:
+        - name: sglang
+          image: lmsysorg/sglang:v0.5.20-cu121
+          command:
+            - python
+            - -m
+            - sglang.launch_server
+          args:
+            - --model-path=/models/qwen3
+            - --served-model-name=qwen3-sglang
+            - --quantization=fp8
+            - --context-length=8192
+            - --mem-fraction-static=0.88
+            - --enable-prefix-caching
+            - --tp=1
+            - --port=30000
+            - --host=0.0.0.0
+            - --enable-metrics
+          ports:
+            - containerPort: 30000
+              name: http
+
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 30000
+            failureThreshold: 40
+            periodSeconds: 15
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 30000
+            periodSeconds: 10
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 30000
+            periodSeconds: 30
+            failureThreshold: 3
+
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - |
+                    sleep 5
+                    curl -sf http://localhost:30000/v1/completions \
+                      -H "Content-Type: application/json" \
+                      -d '{"model":"qwen3-sglang","prompt":"Hello","max_tokens":1}' || true
+            preStop:
+              exec:
+                command: ["sleep", "60"]
+
+          env:
+            - name: CUDA_VISIBLE_DEVICES
+              value: "0"
+
+          resources:
+            requests:
+              cpu: "4"
+              memory: 16Gi
+            limits:
+              cpu: "8"
+              memory: 24Gi
+              nvidia.com/gpu: "1"
+
+          volumeMounts:
+            - name: model-cache
+              mountPath: /models
+            - name: shm
+              mountPath: /dev/shm
+
+      volumes:
+        - name: model-cache
+          hostPath:
+            path: /var/lib/models
+            type: DirectoryOrCreate
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Gi
+
+      terminationGracePeriodSeconds: 120

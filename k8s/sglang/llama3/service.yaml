@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: llama3-sglang-service
+  namespace: llm-serving
+  labels:
+    app: sglang-llama3
+spec:
+  selector:
+    app: sglang-llama3
+  ports:
+    - name: http
+      port: 30000
+      targetPort: 30000
+  type: ClusterIP

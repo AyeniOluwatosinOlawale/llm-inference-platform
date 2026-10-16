@@ -1,0 +1,102 @@
+# FIX #6: Explicit egress allowlist — the reference EKS platform had no egress policies at all.
+# Without these, a compromised vLLM pod could reach EC2/RunPod metadata service (169.254.169.254)
+# and exfiltrate instance credentials or the HuggingFace token.
+---
+# vLLM pods may reach: HuggingFace (model download on init), Prometheus pushgateway, DNS.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-vllm
+  namespace: llm-serving
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # DNS
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # HuggingFace model download (init container only)
+    - ports:
+        - protocol: TCP
+          port: 443
+    # Intra-namespace (pod → pod health checks)
+    - to:
+        - podSelector: {}
+---
+# LiteLLM gateway may reach: vLLM backends, Redis, PostgreSQL, DNS.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-gateway
+  namespace: llm-gateway
+spec:
+  podSelector:
+    matchLabels:
+      app: litellm-proxy
+  policyTypes:
+    - Egress
+  egress:
+    # DNS
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # vLLM backends in llm-serving namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: llm-serving
+      ports:
+        - protocol: TCP
+          port: 8000
+    # Redis (same namespace)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    # PostgreSQL (same namespace)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# Prometheus may scrape: all namespaces on known metric ports.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-prometheus
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8000    # vLLM /metrics
+        - protocol: TCP
+          port: 4000    # LiteLLM /metrics
+        - protocol: TCP
+          port: 9400    # DCGM exporter
+        - protocol: TCP
+          port: 9090    # Prometheus self-scrape

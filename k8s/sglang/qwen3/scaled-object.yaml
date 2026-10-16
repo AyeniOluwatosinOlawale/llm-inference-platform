@@ -1,0 +1,26 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: sglang-qwen3-scaler
+  namespace: llm-serving
+spec:
+  scaleTargetRef:
+    name: sglang-qwen3
+  minReplicaCount: 1
+  maxReplicaCount: 4
+  cooldownPeriod: 300
+  pollingInterval: 30
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        metricName: sglang_num_queue_reqs_qwen3
+        query: sum(sglang:num_queue_reqs{model_name="qwen3-sglang"})
+        threshold: "5"
+
+    - type: prometheus
+      metadata:
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        metricName: sglang_gpu_cache_usage_qwen3
+        query: avg(sglang:gpu_cache_usage_perc{model_name="qwen3-sglang"}) * 100
+        threshold: "80"

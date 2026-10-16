@@ -1,0 +1,98 @@
+# FIX #5: The reference platform had AlertManager running but zero alerting rules.
+# These 6 rules cover both vLLM and SGLang engines across all deployed models.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: llm-serving-alerts
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: vllm.rules
+      interval: 30s
+      rules:
+        # KV-cache near saturation — scale-out or throttle new requests.
+        - alert: VllmGpuCacheNearSaturation
+          expr: avg(vllm:gpu_cache_usage_perc) by (model_name) > 0.95
+          for: 2m
+          labels:
+            severity: warning
+            engine: vllm
+          annotations:
+            summary: "vLLM KV-cache > 95% for {{ $labels.model_name }}"
+            description: "GPU KV-cache at {{ $value | humanizePercentage }}. Requests will be rejected if it reaches 100%."
+
+        # Request queue is growing — inference is saturated.
+        - alert: VllmRequestQueueSpiking
+          expr: sum(vllm:num_requests_waiting) by (model_name) > 20
+          for: 5m
+          labels:
+            severity: warning
+            engine: vllm
+          annotations:
+            summary: "vLLM queue depth > 20 for {{ $labels.model_name }}"
+            description: "{{ $value }} requests waiting. KEDA should be scaling — check ScaledObject status."
+
+    - name: sglang.rules
+      interval: 30s
+      rules:
+        # SGLang equivalent of the vLLM KV-cache alert.
+        - alert: SGLangGpuCacheNearSaturation
+          expr: avg(sglang:gpu_cache_usage_perc) by (model_name) > 0.95
+          for: 2m
+          labels:
+            severity: warning
+            engine: sglang
+          annotations:
+            summary: "SGLang KV-cache > 95% for {{ $labels.model_name }}"
+            description: "GPU KV-cache at {{ $value | humanizePercentage }}."
+
+        - alert: SGLangRequestQueueSpiking
+          expr: sum(sglang:num_queue_reqs) by (model_name) > 20
+          for: 5m
+          labels:
+            severity: warning
+            engine: sglang
+          annotations:
+            summary: "SGLang queue depth > 20 for {{ $labels.model_name }}"
+            description: "{{ $value }} requests queued."
+
+    - name: kubernetes.rules
+      interval: 60s
+      rules:
+        # Any serving pod restarting repeatedly — likely OOM or startup failure.
+        - alert: ServingPodCrashLooping
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="llm-serving"}[15m]) > 3
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pod {{ $labels.pod }} is crash-looping"
+            description: "{{ $value }} restarts in the last 15 minutes. Check GPU memory and model load logs."
+
+        # All replicas for a model are unready — complete serving outage.
+        - alert: ServingPodNotReady
+          expr: |
+            sum(kube_pod_status_ready{namespace="llm-serving", condition="true"}) by (pod) == 0
+          for: 3m
+          labels:
+            severity: critical
+          annotations:
+            summary: "No ready serving pods for {{ $labels.pod }}"
+            description: "All replicas are unready. LiteLLM will return 503 for this model."
+
+    - name: prometheus.rules
+      interval: 5m
+      rules:
+        # Prometheus storage near the retentionSize cap — adding retentionSize: "45GB" (FIX #12).
+        - alert: PrometheusDiskPressure
+          expr: |
+            prometheus_tsdb_storage_blocks_bytes / (45 * 1024 * 1024 * 1024) > 0.90
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Prometheus storage > 90% of 45 GB cap"
+            description: "{{ $value | humanizePercentage }} used. Increase retentionSize or reduce scrape cardinality."

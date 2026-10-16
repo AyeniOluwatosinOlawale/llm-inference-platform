@@ -1,0 +1,31 @@
+# FIX #1: The model_name label in Prometheus queries MUST match --served-model-name exactly.
+# Run `make verify-metrics` before applying this file — it will patch the correct label.
+# The value below ("llama3") matches --served-model-name=llama3 in deployment.yaml.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: vllm-llama3-scaler
+  namespace: llm-serving
+spec:
+  scaleTargetRef:
+    name: vllm-llama3
+  minReplicaCount: 1
+  maxReplicaCount: 4
+  cooldownPeriod: 300
+  pollingInterval: 30
+  triggers:
+    # Scale when request queue builds up — more reliable than CPU for GPU inference.
+    - type: prometheus
+      metadata:
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        metricName: vllm_num_requests_waiting_llama3
+        query: sum(vllm:num_requests_waiting{model_name="llama3"})
+        threshold: "5"
+
+    # Also scale when KV cache is nearly full — prevents OOM evictions.
+    - type: prometheus
+      metadata:
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        metricName: vllm_gpu_cache_usage_llama3
+        query: avg(vllm:gpu_cache_usage_perc{model_name="llama3"}) * 100
+        threshold: "80"

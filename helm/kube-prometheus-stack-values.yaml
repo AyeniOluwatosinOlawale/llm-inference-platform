@@ -1,0 +1,73 @@
+prometheus:
+  prometheusSpec:
+    retention: 15d
+    # FIX #12: retentionSize cap prevents Prometheus OOMKill on high-cardinality GPU+vLLM metrics.
+    retentionSize: "45GB"
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 50Gi
+    # Scrape all ServiceMonitors across all namespaces.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    podMonitorSelector: {}
+    podMonitorNamespaceSelector: {}
+    # Allow PrometheusRule CRDs across all namespaces.
+    ruleSelector: {}
+    ruleNamespaceSelector: {}
+
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+grafana:
+  enabled: true
+  adminPassword: "${GRAFANA_ADMIN_PASSWORD}"
+  persistence:
+    enabled: true
+    size: 5Gi
+  # FIX #13: sidecar watches for ConfigMaps labelled grafana_dashboard=1 and auto-imports them.
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: monitoring
+      folder: /var/lib/grafana/dashboards/llm-platform
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      traefik.ingress.kubernetes.io/router.entrypoints: websecure
+      traefik.ingress.kubernetes.io/router.tls: "true"
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    hosts:
+      - grafana.${DNS_ZONE}
+    tls:
+      - secretName: grafana-tls
+        hosts:
+          - grafana.${DNS_ZONE}
+
+# Deploy DCGM GPU exporter for GPU-level metrics (sm_utilization, memory, power).
+additionalPrometheusRulesMap: {}
+
+dcgmExporter:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+
+kubeStateMetrics:
+  enabled: true
+
+nodeExporter:
+  enabled: true
