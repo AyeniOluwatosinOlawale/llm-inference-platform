@@ -1,0 +1,166 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-llama3-70b
+  namespace: llm-serving
+  labels:
+    app: vllm-llama3-70b
+    model: llama3-70b
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-llama3-70b
+  template:
+    metadata:
+      labels:
+        app: vllm-llama3-70b
+        model: llama3-70b
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+        # Targets the gpu-multigpu NodePool (g5.12xlarge = 4x A10G).
+        - key: gpu-multigpu
+          operator: Exists
+          effect: NoSchedule
+
+      nodeSelector:
+        workload-type: gpu-multigpu
+
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: vllm-llama3-70b
+
+      initContainers:
+        - name: model-pull
+          image: huggingface/downloader:latest
+          command:
+            - sh
+            - -c
+            - |
+              if [ -d /models/llama3-70b ]; then
+                echo "Model cache hit — skipping download"
+                exit 0
+              fi
+              huggingface-cli download \
+                meta-llama/Meta-Llama-3.1-70B-Instruct-AWQ \
+                --local-dir /models/llama3-70b \
+                --token "$HF_TOKEN"
+          env:
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: platform-secrets
+                  key: HUGGINGFACE_TOKEN
+          volumeMounts:
+            - name: model-cache
+              mountPath: /models
+          resources:
+            requests:
+              cpu: "4"
+              memory: 8Gi
+
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:v0.30.0
+          command:
+            - python
+            - -m
+            - vllm.entrypoints.openai.api_server
+          args:
+            - --model=/models/llama3-70b
+            - --served-model-name=llama3-70b
+            - --quantization=awq
+            - --max-model-len=8192
+            - --gpu-memory-utilization=0.90
+            - --enable-prefix-caching
+            # 4-way tensor parallelism across all 4 A10G GPUs on the node.
+            # Each GPU holds 1/4 of each transformer layer in parallel.
+            - --tensor-parallel-size=4
+            - --port=8000
+            - --host=0.0.0.0
+          ports:
+            - containerPort: 8000
+              name: http
+
+          # 70B model takes ~25 min to load — extend startup budget accordingly.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            failureThreshold: 100
+            periodSeconds: 15
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 0
+            periodSeconds: 10
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 0
+            periodSeconds: 30
+            failureThreshold: 3
+
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - |
+                    sleep 5
+                    curl -sf http://localhost:8000/v1/completions \
+                      -H "Content-Type: application/json" \
+                      -d '{"model":"llama3-70b","prompt":"Hello","max_tokens":1}' || true
+            preStop:
+              exec:
+                command: ["sleep", "60"]
+
+          env:
+            # Expose all 4 GPUs on a g5.12xlarge to the container.
+            - name: CUDA_VISIBLE_DEVICES
+              value: "0,1,2,3"
+
+          resources:
+            requests:
+              cpu: "16"
+              memory: 64Gi
+            limits:
+              cpu: "48"
+              memory: 192Gi
+              nvidia.com/gpu: "4"
+
+          volumeMounts:
+            - name: model-cache
+              mountPath: /models
+            - name: shm
+              mountPath: /dev/shm
+
+      volumes:
+        - name: model-cache
+          hostPath:
+            path: /var/lib/models
+            type: DirectoryOrCreate
+        # 70B inference needs larger shared memory for tensor-parallel communication.
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Gi
+
+      terminationGracePeriodSeconds: 120

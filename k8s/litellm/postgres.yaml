@@ -72,7 +72,19 @@ spec:
       targetPort: 5432
   type: ClusterIP
 ---
-# Daily pg_dump CronJob — 7-day retention.
+# ServiceAccount for the backup CronJob — annotated with the IRSA role ARN
+# from: terraform output -raw pg_backup_role_arn
+# Substitute the annotation value before applying or let deploy-litellm handle it.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: postgres-backup
+  namespace: llm-gateway
+  annotations:
+    eks.amazonaws.com/role-arn: "${PG_BACKUP_ROLE_ARN}"
+---
+# Daily pg_dump CronJob — pipes directly to S3 (30-day retention set in Terraform).
+# Replaces the previous local-PVC approach which lost backups on node eviction.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -84,6 +96,8 @@ spec:
     spec:
       template:
         spec:
+          serviceAccountName: postgres-backup
+          restartPolicy: OnFailure
           containers:
             - name: backup
               image: postgres:16-alpine
@@ -91,33 +105,30 @@ spec:
                 - sh
                 - -c
                 - |
-                  FNAME="backup-$(date +%Y%m%d).sql.gz"
-                  pg_dump -h postgres-service -U litellm litellm | gzip > /backups/$FNAME
-                  ls -t /backups/backup-*.sql.gz | tail -n +8 | xargs rm -f
+                  apk add --no-cache aws-cli > /dev/null 2>&1
+                  FNAME="backup-$(date +%Y%m%d-%H%M%S).sql.gz"
+                  pg_dump -h postgres-service -U litellm litellm \
+                    | gzip \
+                    | aws s3 cp - "s3://${PG_BACKUP_BUCKET}/${FNAME}"
+                  echo "Backup written to s3://${PG_BACKUP_BUCKET}/${FNAME}"
               env:
                 - name: PGPASSWORD
                   valueFrom:
                     secretKeyRef:
                       name: litellm-secrets
                       key: POSTGRES_PASSWORD
-              volumeMounts:
-                - name: backups
-                  mountPath: /backups
-          restartPolicy: OnFailure
-          volumes:
-            - name: backups
-              persistentVolumeClaim:
-                claimName: postgres-backup-pvc
+                - name: PG_BACKUP_BUCKET
+                  valueFrom:
+                    configMapKeyRef:
+                      name: backup-config
+                      key: PG_BACKUP_BUCKET
 ---
-# FIX #J: PVC-backed backup storage so pg_dumps survive pod/node restarts.
-# emptyDir was lost on every pod eviction — 7-day backup retention now durable.
+# ConfigMap holding the backup bucket name.
+# Populated by deploy-litellm from: terraform output -raw pg_backup_bucket
 apiVersion: v1
-kind: PersistentVolumeClaim
+kind: ConfigMap
 metadata:
-  name: postgres-backup-pvc
+  name: backup-config
   namespace: llm-gateway
-spec:
-  accessModes: ["ReadWriteOnce"]
-  resources:
-    requests:
-      storage: 20Gi
+data:
+  PG_BACKUP_BUCKET: "${PG_BACKUP_BUCKET}"

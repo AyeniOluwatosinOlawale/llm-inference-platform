@@ -1,0 +1,57 @@
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: gpu-multigpu
+spec:
+  template:
+    metadata:
+      labels:
+        workload-type: gpu-multigpu
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: gpu-nodes   # reuses the same EC2NodeClass (AL2, 200GB NVMe)
+
+      taints:
+        - key: nvidia.com/gpu
+          value: "true"
+          effect: NoSchedule
+        # Extra taint so only explicitly-tolerating 70B pods land here.
+        - key: gpu-multigpu
+          value: "true"
+          effect: NoSchedule
+
+      requirements:
+        # g5.12xlarge = 4x A10G (24GB each = 96GB total VRAM).
+        # Enough for Llama 3.1 70B with --tensor-parallel-size=4.
+        - key: karpenter.k8s.aws/instance-family
+          operator: In
+          values: ["g5"]
+
+        - key: karpenter.k8s.aws/instance-size
+          operator: In
+          values: ["12xlarge"]
+
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot", "on-demand"]
+
+        - key: topology.kubernetes.io/region
+          operator: In
+          values: ["us-east-1"]
+
+        - key: topology.kubernetes.io/zone
+          operator: In
+          values: ["us-east-1a", "us-east-1b", "us-east-1c"]
+
+  disruption:
+    # 70B model load takes ~25 min — never consolidate mid-load.
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 30m
+    budgets:
+      - maxUnavailable: "1"
+
+  # Cap at 2 multi-GPU nodes (~$4/hr spot each).
+  limits:
+    nvidia.com/gpu: "8"

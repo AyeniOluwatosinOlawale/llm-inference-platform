@@ -44,6 +44,16 @@ data:
           input_cost_per_token: 0.0000002
           output_cost_per_token: 0.0000002
 
+      # ── 70B model (4x tensor parallel, vLLM only) ────────────────────────────
+      - model_name: llama3-70b
+        litellm_params:
+          model: openai/llama3-70b
+          api_base: http://llama3-70b-vllm-service.llm-serving.svc.cluster.local:8000/v1
+          api_key: "none"
+          rpm: 10
+          input_cost_per_token:  0.0000008
+          output_cost_per_token: 0.0000008
+
       # ── Virtual aliases (weighted routing across both engines) ─────────────────
       # Default: 50/50 split between vLLM and SGLang.
       # Adjust with: make canary ENGINE=vllm WEIGHT=90   (shift 90% to vLLM)

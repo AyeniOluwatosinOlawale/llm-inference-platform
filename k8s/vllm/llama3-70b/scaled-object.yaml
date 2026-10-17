@@ -1,0 +1,26 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: vllm-llama3-70b-scaler
+  namespace: llm-serving
+spec:
+  scaleTargetRef:
+    name: vllm-llama3-70b
+  minReplicaCount: 1
+  maxReplicaCount: 2   # each replica = 1x g5.12xlarge (~$4/hr spot)
+  cooldownPeriod: 600  # longer cooldown — 70B pods are expensive to churn
+  pollingInterval: 30
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        metricName: vllm_num_requests_waiting_llama3_70b
+        query: sum(vllm:num_requests_waiting{model_name="llama3-70b"})
+        threshold: "3"   # lower threshold — 70B is slower so queue fills faster
+
+    - type: prometheus
+      metadata:
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        metricName: vllm_gpu_cache_usage_llama3_70b
+        query: avg(vllm:gpu_cache_usage_perc{model_name="llama3-70b"}) * 100
+        threshold: "80"

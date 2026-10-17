@@ -4,7 +4,7 @@
 
 .PHONY: help secrets up-eks up-runpod up-vastai \
         deploy-base deploy-karpenter deploy-infra deploy-velero verify-metrics \
-        deploy-vllm deploy-sglang deploy-litellm deploy-dashboards \
+        deploy-vllm deploy-sglang deploy-litellm deploy-dashboards deploy-vllm-70b \
         health-check load-test \
         benchmark-lab benchmark-prod benchmark-compare \
         canary promote rollback \
@@ -172,10 +172,12 @@ deploy-sglang:
 	kubectl rollout status deployment/sglang-qwen3  -n llm-serving --timeout=600s
 
 deploy-litellm:
-	@echo "==> Injecting LiteLLM secrets..."
-	$(eval RDS_ENDPOINT := $(shell cd provision/eks && terraform output -raw rds_endpoint 2>/dev/null))
-	$(eval RDS_PASSWORD := $(shell cd provision/eks && terraform output -raw rds_password 2>/dev/null))
-	$(eval DB_URL       := $(if $(RDS_ENDPOINT),postgresql://litellm:$(RDS_PASSWORD)@$(RDS_ENDPOINT)/litellm,postgresql://litellm:$(POSTGRES_PASSWORD)@postgres-service.llm-gateway.svc.cluster.local:5432/litellm))
+	@echo "==> Injecting LiteLLM secrets and backup config..."
+	$(eval RDS_ENDPOINT      := $(shell cd provision/eks && terraform output -raw rds_endpoint 2>/dev/null))
+	$(eval RDS_PASSWORD      := $(shell cd provision/eks && terraform output -raw rds_password 2>/dev/null))
+	$(eval DB_URL            := $(if $(RDS_ENDPOINT),postgresql://litellm:$(RDS_PASSWORD)@$(RDS_ENDPOINT)/litellm,postgresql://litellm:$(POSTGRES_PASSWORD)@postgres-service.llm-gateway.svc.cluster.local:5432/litellm))
+	$(eval PG_BACKUP_BUCKET  := $(shell cd provision/eks && terraform output -raw pg_backup_bucket 2>/dev/null))
+	$(eval PG_BACKUP_ROLE    := $(shell cd provision/eks && terraform output -raw pg_backup_role_arn 2>/dev/null))
 	kubectl create secret generic litellm-secrets -n llm-gateway \
 		--from-literal=LITELLM_MASTER_KEY="$(LITELLM_MASTER_KEY)" \
 		--from-literal=REDIS_PASSWORD="$(REDIS_PASSWORD)" \
@@ -184,7 +186,9 @@ deploy-litellm:
 		--dry-run=client -o yaml | kubectl apply -f -
 	@if [ -z "$(RDS_ENDPOINT)" ]; then \
 		echo "    RDS not provisioned — deploying in-cluster Postgres fallback"; \
-		kubectl apply -f k8s/litellm/postgres.yaml; \
+		sed -e "s|\$${PG_BACKUP_BUCKET}|$(PG_BACKUP_BUCKET)|g" \
+		    -e "s|\$${PG_BACKUP_ROLE_ARN}|$(PG_BACKUP_ROLE)|g" \
+		    k8s/litellm/postgres.yaml | kubectl apply -f -; \
 	else \
 		echo "    Using RDS endpoint: $(RDS_ENDPOINT)"; \
 	fi
@@ -205,6 +209,14 @@ health-check:
 	@LITELLM_URL="https://vllm.$(DNS_ZONE)" bash scripts/health-check.sh
 
 # FIX #9: No ignore_changes footgun. Updates are explicit kubectl rollout commands.
+deploy-vllm-70b:
+	@echo "==> Applying multi-GPU NodePool (g5.12xlarge, 4x A10G)..."
+	kubectl apply -f k8s/karpenter/node-pool-multigpu.yaml
+	@echo "==> Deploying Llama 3.1 70B on vLLM (tensor-parallel-size=4)..."
+	kubectl apply -f k8s/vllm/llama3-70b/
+	@echo "==> Waiting for 70B pod to pass startupProbe (up to 25 min)..."
+	kubectl rollout status deployment/vllm-llama3-70b -n llm-serving --timeout=1500s
+
 redeploy-vllm:
 	kubectl rollout restart deployment/vllm-llama3 -n llm-serving
 	kubectl rollout restart deployment/vllm-qwen3  -n llm-serving
