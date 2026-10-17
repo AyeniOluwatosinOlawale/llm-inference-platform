@@ -1,0 +1,57 @@
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: gpu
+spec:
+  template:
+    metadata:
+      labels:
+        workload-type: gpu
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: gpu-nodes
+
+      # Same taint as the managed node group — vLLM/SGLang tolerations match both.
+      taints:
+        - key: nvidia.com/gpu
+          value: "true"
+          effect: NoSchedule
+
+      requirements:
+        # g5 family = A10G 24GB VRAM. Same instance type as the managed node group.
+        - key: karpenter.k8s.aws/instance-family
+          operator: In
+          values: ["g5"]
+
+        - key: karpenter.k8s.aws/instance-size
+          operator: In
+          values: ["xlarge"]
+
+        # Spot-first — ~70% cheaper than on-demand (~$0.30/hr vs ~$1.01/hr).
+        # Falls back to on-demand automatically when no spot capacity is available.
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot", "on-demand"]
+
+        - key: topology.kubernetes.io/region
+          operator: In
+          values: ["us-east-1"]
+
+        # Spread across AZs for spot pool diversity.
+        - key: topology.kubernetes.io/zone
+          operator: In
+          values: ["us-east-1a", "us-east-1b", "us-east-1c"]
+
+  # LLM pods take ~10 min to load model weights — consolidate slowly to avoid
+  # evicting a pod that has just finished loading.
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 10m
+    budgets:
+      - maxUnavailable: "1"
+
+  # Hard cap: 4 GPU nodes (same as the managed node group max_size).
+  limits:
+    nvidia.com/gpu: "4"

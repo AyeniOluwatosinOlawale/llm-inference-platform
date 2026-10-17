@@ -1,0 +1,36 @@
+# Karpenter v1.0.x Helm values
+# Install via: make deploy-karpenter
+# All ${...} substitutions are injected automatically by the Makefile target
+# using `terraform output` — no manual editing needed.
+
+serviceAccount:
+  annotations:
+    eks.amazonaws.com/role-arn: "${KARPENTER_CONTROLLER_ROLE_ARN}"
+
+settings:
+  clusterName: "${CLUSTER_NAME}"
+  clusterEndpoint: "${CLUSTER_ENDPOINT}"
+  interruptionQueue: "${INTERRUPTION_QUEUE_NAME}"
+
+# Pin Karpenter controller to CPU nodes so it never competes for GPU resources.
+nodeSelector:
+  workload-type: cpu
+
+# Two replicas — Karpenter leader-elects internally.
+replicas: 2
+
+controller:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Scrape Karpenter metrics into the existing Prometheus stack.
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  additionalLabels:
+    release: kube-prometheus-stack
