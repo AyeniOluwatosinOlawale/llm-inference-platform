@@ -3,7 +3,7 @@
 # Lab integration: inference-optimizer-lab2 (VLLMClient / SGLangClient)
 
 .PHONY: help secrets up-eks up-runpod up-vastai \
-        deploy-base deploy-infra deploy-velero verify-metrics \
+        deploy-base deploy-karpenter deploy-infra deploy-velero verify-metrics \
         deploy-vllm deploy-sglang deploy-litellm deploy-dashboards \
         health-check load-test \
         benchmark-lab benchmark-prod benchmark-compare \
@@ -29,6 +29,7 @@ help:
 	@echo ""
 	@echo "  Deploy (in order)"
 	@echo "    make deploy-base    Namespaces + NetworkPolicies"
+	@echo "    make deploy-karpenter Karpenter + GPU NodePool (~90s node cold-start)"
 	@echo "    make deploy-infra   Prometheus, KEDA, Traefik, Loki"
 	@echo "    make deploy-velero  Velero cluster + PVC backup (FIX K)"
 	@echo "    make verify-metrics Confirm vLLM/SGLang metric labels"
@@ -81,6 +82,36 @@ up-vastai:
 deploy-base:
 	kubectl apply -f k8s/base/namespaces.yaml
 	kubectl apply -f k8s/base/network-policies/
+
+# ── Karpenter ──────────────────────────────────────────────────────────────────
+# Replaces the static GPU managed node group. Provisions g5.xlarge nodes in ~90s
+# (vs ~5 min for EKS managed node groups). Spot-first with on-demand fallback.
+#
+# Run AFTER terraform apply has created the IAM roles and SQS queue.
+# Pull the substitution values from terraform output.
+
+deploy-karpenter:
+	@echo "==> Reading Karpenter config from Terraform outputs..."
+	$(eval CLUSTER_ENDPOINT    := $(shell cd provision/eks && terraform output -raw cluster_endpoint))
+	$(eval CONTROLLER_ROLE_ARN := $(shell cd provision/eks && terraform output -raw karpenter_controller_role_arn))
+	$(eval INTERRUPTION_QUEUE  := $(shell cd provision/eks && terraform output -raw karpenter_interruption_queue_name))
+	$(eval NODE_PROFILE_ROLE   := $(shell cd provision/eks && terraform output -raw karpenter_node_instance_profile))
+	@echo "==> Installing Karpenter Helm chart..."
+	helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter \
+		--version "1.0.1" \
+		--namespace karpenter --create-namespace \
+		--values helm/karpenter-values.yaml \
+		--set "settings.clusterName=$(CLUSTER_NAME)" \
+		--set "settings.clusterEndpoint=$(CLUSTER_ENDPOINT)" \
+		--set "settings.interruptionQueue=$(INTERRUPTION_QUEUE)" \
+		--set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=$(CONTROLLER_ROLE_ARN)"
+	@echo "==> Waiting for Karpenter controller to be ready..."
+	kubectl rollout status deployment/karpenter -n karpenter --timeout=120s
+	@echo "==> Applying EC2NodeClass and NodePool..."
+	sed "s|\$${KARPENTER_NODE_INSTANCE_PROFILE_ROLE}|$(NODE_PROFILE_ROLE)|g" \
+		k8s/karpenter/ec2-node-class.yaml | kubectl apply -f -
+	kubectl apply -f k8s/karpenter/node-pool.yaml
+	@echo "==> Karpenter ready. GPU nodes will be provisioned on first pending pod."
 
 deploy-infra:
 	@echo "==> Installing Helm charts..."

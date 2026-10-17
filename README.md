@@ -5,6 +5,7 @@
 ![vLLM](https://img.shields.io/badge/vLLM-0.30.0-76B900?logo=nvidia&logoColor=white)
 ![SGLang](https://img.shields.io/badge/SGLang-0.5.20-76B900?logo=nvidia&logoColor=white)
 ![KEDA](https://img.shields.io/badge/KEDA-2.x-326CE5?logo=kubernetes&logoColor=white)
+![Karpenter](https://img.shields.io/badge/Karpenter-1.0-326CE5?logo=kubernetes&logoColor=white)
 ![GPU](https://img.shields.io/badge/GPU-A10G%2024GB-76B900?logo=nvidia&logoColor=white)
 
 A fully Terraform-managed platform for serving open-source large language models at production scale on AWS EKS. The platform provisions an EKS 1.30 cluster with GPU node groups, runs **Llama 3.1 8B** and **Qwen3 8B** through both **vLLM v0.30.0** and **SGLang v0.5.20** simultaneously, and routes all traffic through a **LiteLLM** proxy gateway — giving any client a single OpenAI-compatible endpoint with model routing, rate limiting, cost tracking, and response caching.
@@ -57,6 +58,8 @@ Virtual aliases `llama3` and `qwen3` round-robin across both engines for live A/
 | **API gateway** | LiteLLM: unified routing, rate limiting, cost tracking, Redis caching |
 | **Multi-model serving** | Llama 3.1 8B + Qwen3 8B behind a single endpoint |
 | **Request-driven scaling** | KEDA ScaledObjects keyed on `num_requests_waiting` per model per engine |
+| **Fast GPU node provisioning** | Karpenter provisions g5.xlarge nodes in ~90s (vs ~5 min for managed node groups); spot-first with on-demand fallback |
+| **Spot interruption handling** | SQS + EventBridge; Karpenter drains the node in the 2-minute window before EC2 reclaims it |
 | **Automatic fallback** | LiteLLM falls back vLLM → SGLang (and vice versa) on engine failure |
 | **Secrets encrypted at rest** | KMS CMK encrypts etcd secrets in EKS |
 | **Remote Terraform state** | S3 + DynamoDB backend; no local state |
@@ -81,6 +84,7 @@ Virtual aliases `llama3` and `qwen3` round-robin across both engines for live A/
 | Models | Llama 3.1 8B Instruct · Qwen3 8B Instruct | — |
 | LLM Gateway | LiteLLM Proxy | latest |
 | Event-driven Scaling | KEDA | 2.x |
+| GPU Node Autoprovisioning | Karpenter | 1.0.x |
 | Ingress | Traefik | latest |
 | TLS | cert-manager + Let's Encrypt | latest |
 | Metrics | kube-prometheus-stack (Prometheus + Grafana + AlertManager) | latest |
@@ -120,6 +124,7 @@ make secrets
 
 # 4. Deploy platform (in order)
 make deploy-base        # Namespaces + NetworkPolicies
+make deploy-karpenter   # Karpenter controller + GPU NodePool (spot-first, ~90s node cold-start)
 make deploy-infra       # Prometheus, KEDA, Traefik, Loki (Helm)
 make verify-metrics     # Confirm vLLM/SGLang metric labels before KEDA wires up
 make deploy-vllm        # Llama3 + Qwen3 on vLLM
@@ -212,7 +217,21 @@ Each model has independent ScaledObjects for vLLM and SGLang, so they scale sepa
 
 ---
 
-### 6. postStart warmup wrapped in `|| true`
+### 6. Karpenter for GPU node provisioning (spot-first, ~90s cold-start)
+
+**Decision:** Replace the static GPU managed node group with Karpenter v1.0.
+
+**Why:** EKS managed node groups provision new nodes via the EC2 Auto Scaling API, which takes 4–6 minutes. Karpenter uses EC2 Fleet's direct launch path: it calls `RunInstances` directly after choosing the optimal AZ and capacity type, cutting cold-start to ~90 seconds. For KEDA-driven scale-up events (burst traffic), this difference determines whether users see a brief queue spike or a multi-minute timeout.
+
+Karpenter also handles spot instance selection automatically. The `NodePool` specifies `capacity-type: [spot, on-demand]`; Karpenter picks the cheapest available spot pool across all three AZs, then falls back to on-demand if no spot capacity exists. g5.xlarge spot runs ~70% cheaper than on-demand ($0.30/hr vs ~$1.01/hr).
+
+Spot interruption is handled via SQS + EventBridge: when EC2 sends a 2-minute interruption notice, the event lands in the SQS queue and Karpenter cordons + drains the node, allowing KEDA to trigger a new replica on a fresh node before the old one terminates.
+
+**Tradeoff:** Karpenter requires an IRSA IAM role with EC2/IAM permissions and must be installed before the first GPU pod is scheduled. The `deploy-karpenter` Makefile target reads the role ARN and queue name from `terraform output` automatically.
+
+---
+
+### 7. postStart warmup wrapped in `|| true`
 
 **Decision:** The postStart warmup hook fires a dummy inference request to pre-compile CUDA kernels, wrapped in `|| true`.
 
@@ -225,7 +244,8 @@ The `|| true` is critical: if vLLM is not yet accepting requests when `postStart
 ## Infrastructure Layout
 
 ```
-provision/eks/           Terraform — VPC, KMS, EKS 1.30, GPU + CPU managed node groups
+provision/eks/           Terraform — VPC, KMS, EKS 1.30, CPU managed node group + Karpenter IAM/SQS
+k8s/karpenter/           EC2NodeClass (AL2 GPU, 200GB NVMe) + NodePool (g5.xlarge, spot+on-demand)
 k8s/base/                Namespaces (llm-serving, llm-gateway, monitoring) + NetworkPolicies
 k8s/vllm/llama3/         Deployment, Service, ServiceMonitor, KEDA ScaledObject
 k8s/vllm/qwen3/          Deployment, Service, ServiceMonitor, KEDA ScaledObject
@@ -290,11 +310,11 @@ docs/                    Architecture, cost profile, gap-fixes, runbooks
 |---|---|---|
 | EKS control plane | Managed | ~$73 |
 | CPU node (1x m5.xlarge) | On-demand | ~$140 |
-| GPU nodes (2x g5.xlarge) | On-demand | ~$1,450 |
+| GPU nodes (2x g5.xlarge) | Spot (Karpenter) | ~$435 |
 | EBS volumes (Prometheus, Postgres) | gp3 | ~$10 |
 | NAT Gateway | Fixed + data | ~$35 |
 | S3 (Terraform state) | Standard | ~$1 |
-| **Total (full running)** | | **~$1,709/month** |
+| **Total (full running)** | | **~$694/month** |
 
 > Scale GPU nodes to 0 when not serving traffic. CPU node runs all monitoring and gateway services (~$248/month at idle).
 

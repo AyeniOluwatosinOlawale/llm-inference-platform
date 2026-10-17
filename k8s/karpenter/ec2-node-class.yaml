@@ -1,0 +1,38 @@
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: gpu-nodes
+spec:
+  # AL2 (Amazon Linux 2) ships with NVIDIA drivers pre-installed when combined
+  # with the AL2_x86_64_GPU AMI family — required for vLLM and SGLang.
+  amiFamily: AL2
+
+  # Instance profile worn by Karpenter-launched nodes.
+  # Value comes from: terraform output -raw karpenter_node_instance_profile
+  # Substitute before applying: sed -i "s/KARPENTER_NODE_PROFILE/$PROFILE/" ec2-node-class.yaml
+  role: "${KARPENTER_NODE_INSTANCE_PROFILE_ROLE}"
+
+  # Auto-discover subnets and security groups by the tag added in karpenter.tf.
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "llm-inference"
+
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "llm-inference"
+
+  # 200 GB NVMe root volume — holds model weights downloaded by the init container.
+  # Per-node cache avoids shared-NFS burst throttling (same fix as managed node group).
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeSize: 200Gi
+        volumeType: gp3
+        iops: 3000
+        throughput: 125
+        encrypted: true
+        deleteOnTermination: true
+
+  tags:
+    Project: llm-inference
+    ManagedBy: karpenter

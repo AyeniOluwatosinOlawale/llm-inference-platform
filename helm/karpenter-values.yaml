@@ -1,0 +1,46 @@
+# Karpenter v1.0.x Helm values
+# Install: helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter \
+#            --version "1.0.1" --namespace karpenter --create-namespace \
+#            --values helm/karpenter-values.yaml
+#
+# Substitute ${...} values from: terraform output -json (in provision/eks/)
+# CLUSTER_NAME                = llm-inference
+# CLUSTER_ENDPOINT            = terraform output -raw cluster_endpoint
+# KARPENTER_CONTROLLER_ROLE   = terraform output -raw karpenter_controller_role_arn
+# INTERRUPTION_QUEUE          = terraform output -raw karpenter_interruption_queue_name
+
+serviceAccount:
+  annotations:
+    eks.amazonaws.com/role-arn: "${KARPENTER_CONTROLLER_ROLE_ARN}"
+
+settings:
+  clusterName: "${CLUSTER_NAME}"
+  clusterEndpoint: "${CLUSTER_ENDPOINT}"
+  interruptionQueue: "${INTERRUPTION_QUEUE_NAME}"
+
+# Pin Karpenter controller to CPU nodes so it never competes for GPU resources.
+nodeSelector:
+  workload-type: cpu
+
+tolerations: []
+
+# Two replicas for controller HA — Karpenter leader-elects.
+replicas: 2
+
+# Resource requests sized for Karpenter on a single-cluster setup.
+# Karpenter is lightweight: < 100m CPU, < 256Mi RAM at rest.
+controller:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Enable Prometheus metrics scraping.
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  additionalLabels:
+    release: kube-prometheus-stack

@@ -27,36 +27,13 @@ module "eks" {
   # ── Node groups ──────────────────────────────────────────────────────────
 
   eks_managed_node_groups = {
-    # GPU nodes: one A10G per node, for vLLM + SGLang pods
-    gpu = {
-      name           = "gpu-nodes"
-      instance_types = [var.gpu_instance_type]
-      ami_type       = "AL2_x86_64_GPU"   # Amazon Linux 2 with NVIDIA drivers pre-installed
+    # GPU nodes are provisioned by Karpenter (see k8s/karpenter/).
+    # Karpenter replaces the static GPU managed node group, cutting cold-start
+    # from ~5 min (EKS managed node groups) to ~90 s (EC2 Fleet direct launch).
+    # The node pool is defined in k8s/karpenter/node-pool.yaml.
 
-      min_size     = 0
-      max_size     = 4
-      desired_size = var.gpu_node_count
-
-      disk_size = 200   # GB; vLLM model cache + container images
-
-      labels = {
-        "workload-type" = "gpu"
-      }
-      taints = [
-        {
-          key    = "nvidia.com/gpu"
-          value  = "true"
-          effect = "NO_SCHEDULE"
-        }
-      ]
-
-      tags = {
-        "k8s.io/cluster-autoscaler/enabled"                  = "true"
-        "k8s.io/cluster-autoscaler/${var.cluster_name}"      = "owned"
-      }
-    }
-
-    # CPU node: LiteLLM, Redis, Postgres, KEDA, Prometheus, Grafana, Loki
+    # CPU node: Karpenter controller, LiteLLM, Redis, Postgres, KEDA, Prometheus, Grafana, Loki.
+    # Must exist before Karpenter is installed — Karpenter itself needs a node to land on.
     cpu = {
       name           = "cpu-nodes"
       instance_types = [var.cpu_instance_type]
