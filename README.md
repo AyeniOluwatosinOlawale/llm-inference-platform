@@ -1,6 +1,6 @@
 # llm-inference-platform
 
-Production-grade LLM inference platform on commodity GPU clouds — **RunPod** and **Vast.ai**. Serves **Llama 3.1 8B** and **Qwen3 8B** on both **vLLM v0.30.0** and **SGLang v0.5.20** behind a LiteLLM proxy gateway, with full observability, autoscaling, and cluster backup.
+Production-grade LLM inference platform on **AWS EKS** (primary) with commodity GPU cloud alternatives — **RunPod** and **Vast.ai**. Serves **Llama 3.1 8B** and **Qwen3 8B** on both **vLLM v0.30.0** and **SGLang v0.5.20** behind a LiteLLM proxy gateway, with full observability, autoscaling, and cluster backup.
 
 Companion to [inference-optimizer-lab2](https://github.com/AyeniOluwatosinOlawale/inference-optimizer-lab2): the lab measures how inference engines behave at different concurrency levels; this platform provisions and operates the infrastructure to serve a real production workload.
 
@@ -38,13 +38,14 @@ Virtual aliases `llama3` and `qwen3` round-robin across both engines for live A/
 
 ## Providers
 
-| | RunPod | Vast.ai |
-|---|---|---|
-| Provisioning | Terraform (`terraform-provider-runpod`) | Python SDK (`vastai`) |
-| Kubernetes | RunPod managed K8s | k3s bootstrapped via cloud-init |
-| Secrets encryption | KMS CMK | k3s `--secrets-encryption` |
-| State backend | S3 + DynamoDB | Supabase Storage |
-| GPU (24 GB) | A10G / RTX 4090 | RTX 4090 / A40 |
+| | AWS EKS (primary) | RunPod | Vast.ai |
+|---|---|---|---|
+| Provisioning | Terraform (hashicorp/aws + eks module) | Terraform (`terraform-provider-runpod`) | Python SDK (`vastai`) |
+| Kubernetes | EKS 1.30 managed | RunPod managed K8s | k3s bootstrapped via cloud-init |
+| Secrets encryption | KMS CMK (etcd) | KMS CMK | k3s `--secrets-encryption` |
+| State backend | S3 + DynamoDB | S3 + DynamoDB | Supabase Storage |
+| GPU (24 GB) | A10G (g5.xlarge) | A10G / RTX 4090 | RTX 4090 / A40 |
+| Cost/hr (2 GPU nodes) | ~$2.10 | ~$1.60 | ~$1.20 |
 
 ## Models & Engines
 
@@ -79,6 +80,7 @@ make secrets
 # Edit .env.secrets: set SLACK_WEBHOOK_URL, VELERO_BACKUP_BUCKET, HUGGINGFACE_TOKEN
 
 # 2. Provision cluster (choose one)
+make up-eks          # Terraform → AWS EKS (g5.xlarge GPU nodes, recommended)
 make up-runpod       # Terraform → RunPod managed K8s
 make up-vastai       # Python SDK → Vast.ai instances + k3s
 
@@ -106,7 +108,9 @@ make benchmark-compare \
 ## Directory Structure
 
 ```
+provision/eks/           Terraform for AWS EKS (VPC, KMS, GPU + CPU node groups)
 provision/runpod/        Terraform for RunPod managed K8s
+provision/lambda/        Lambda Labs kubeadm provisioner + cloud-init
 provision/vastai/        Python SDK provisioner + k3s cloud-init
 k8s/base/                Namespaces + NetworkPolicies (ingress + egress)
 k8s/vllm/llama3/         Llama 3.1 8B on vLLM — deployment, service, KEDA ScaledObject

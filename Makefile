@@ -1,8 +1,8 @@
-# llm-inference-platform — provider-agnostic LLM serving on RunPod / Vast.ai
+# llm-inference-platform — production LLM serving on AWS EKS / RunPod / Vast.ai
 # Engines: vLLM v0.30.0 + SGLang v0.5.20  |  Models: Llama 3.1 8B + Qwen3 8B
 # Lab integration: inference-optimizer-lab2 (VLLMClient / SGLangClient)
 
-.PHONY: help secrets up-runpod up-vastai \
+.PHONY: help secrets up-eks up-runpod up-vastai \
         deploy-base deploy-infra deploy-velero verify-metrics \
         deploy-vllm deploy-sglang deploy-litellm deploy-dashboards \
         health-check load-test \
@@ -56,6 +56,13 @@ secrets:
 	@bash scripts/generate-secrets.sh
 
 # ── Provisioning ───────────────────────────────────────────────────────────────
+
+up-eks:
+	@echo "==> Provisioning AWS EKS cluster (g5.xlarge GPU nodes)..."
+	cd provision/eks && bash bootstrap.sh
+	cd provision/eks && terraform init && terraform apply
+	aws eks update-kubeconfig --region us-east-1 --name llm-inference
+	@echo "    KUBECONFIG updated. Run: kubectl get nodes"
 
 up-runpod:
 	@echo "==> Provisioning RunPod K8s cluster..."
