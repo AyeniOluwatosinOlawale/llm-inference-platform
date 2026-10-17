@@ -1,7 +1,25 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: llama3-service
+  name: llama3-vllm-service
+  namespace: llm-serving
+  labels:
+    app: vllm-llama3
+spec:
+  selector:
+    app: vllm-llama3
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP
+---
+# Canary service — Argo Rollouts manages the selector to route only to canary pods.
+# Selector is intentionally empty here; Rollout controller patches it at runtime.
+apiVersion: v1
+kind: Service
+metadata:
+  name: llama3-vllm-service-canary
   namespace: llm-serving
   labels:
     app: vllm-llama3

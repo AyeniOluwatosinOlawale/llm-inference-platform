@@ -1,0 +1,38 @@
+# Argo Rollouts — progressive delivery controller
+# Installed in argo-rollouts namespace by: make deploy-rollouts
+# Manages canary promotions for vLLM/SGLang deployments with Prometheus-backed analysis.
+
+controller:
+  replicas: 2
+  nodeSelector:
+    workload-type: cpu
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  # Emit metrics for kube-prometheus-stack scraping
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      additionalLabels:
+        release: kube-prometheus-stack
+
+dashboard:
+  enabled: true
+  service:
+    type: ClusterIP
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts:
+      - rollouts.${DNS_ZONE}
+    tls:
+      - secretName: rollouts-tls
+        hosts:
+          - rollouts.${DNS_ZONE}

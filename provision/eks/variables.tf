@@ -33,5 +33,17 @@ variable "cpu_instance_type" {
 
 variable "cpu_node_count" {
   type    = number
-  default = 1
+  default = 2
+}
+
+variable "budget_alert_email" {
+  description = "Email address for AWS Budget spend alerts (must confirm SNS subscription after apply)"
+  type        = string
+  default     = "ayenioluwatosinolawale@gmail.com"
+}
+
+variable "monthly_budget_usd" {
+  description = "Expected monthly spend cap in USD — alerts fire at 80% and 100%"
+  type        = number
+  default     = 700
 }

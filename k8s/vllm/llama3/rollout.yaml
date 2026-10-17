@@ -1,0 +1,188 @@
+# Argo Rollout for vLLM Llama 3.1 8B — replaces the apps/v1 Deployment.
+# Canary strategy: 10% traffic → Prometheus analysis → 50% → 100%
+# Auto-rollback if error rate > 1% or p99 TTFT > 3s during any analysis interval.
+#
+# To promote manually: kubectl argo rollouts promote vllm-llama3 -n llm-serving
+# To abort:            kubectl argo rollouts abort  vllm-llama3 -n llm-serving
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: vllm-llama3
+  namespace: llm-serving
+  labels:
+    app: vllm-llama3
+    model: llama3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-llama3
+  strategy:
+    canary:
+      # Route canary traffic via a dedicated service so Prometheus can isolate it.
+      canaryService: llama3-vllm-service-canary
+      stableService: llama3-vllm-service
+      steps:
+        # Step 1: send 10% to canary
+        - setWeight: 10
+        # Step 2: run analysis for 5 minutes (5 × 60s intervals)
+        - analysis:
+            templates:
+              - templateName: vllm-canary-analysis
+            args:
+              - name: service-name
+                value: llama3-vllm-service
+              - name: model-name
+                value: llama3
+            startingStep: 1
+            count: 5
+        # Step 3: if analysis passed, promote to 50%
+        - setWeight: 50
+        # Step 4: pause 2 minutes before full promotion
+        - pause:
+            duration: 2m
+        # Step 5: full promotion (100%) — Argo Rollouts completes automatically
+      autoPromotionEnabled: false   # require explicit promote or analysis pass
+
+  template:
+    metadata:
+      labels:
+        app: vllm-llama3
+        model: llama3
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: vllm-llama3
+
+      initContainers:
+        - name: model-pull
+          image: huggingface/downloader:latest
+          command:
+            - sh
+            - -c
+            - |
+              if [ -d /models/llama3 ]; then
+                echo "Model cache hit — skipping download"
+                exit 0
+              fi
+              huggingface-cli download \
+                meta-llama/Meta-Llama-3.1-8B-Instruct-AWQ \
+                --local-dir /models/llama3 \
+                --token "$HF_TOKEN"
+          env:
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: platform-secrets
+                  key: HUGGINGFACE_TOKEN
+          volumeMounts:
+            - name: model-cache
+              mountPath: /models
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:v0.30.0
+          command:
+            - python
+            - -m
+            - vllm.entrypoints.openai.api_server
+          args:
+            - --model=/models/llama3
+            - --served-model-name=llama3
+            - --quantization=awq
+            - --max-model-len=8192
+            - --gpu-memory-utilization=0.90
+            - --enable-prefix-caching
+            - --tensor-parallel-size=1
+            - --otlp-traces-endpoint=http://opentelemetry-collector.monitoring.svc.cluster.local:4317
+            - --port=8000
+            - --host=0.0.0.0
+          ports:
+            - containerPort: 8000
+              name: http
+
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            failureThreshold: 40
+            periodSeconds: 15
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 0
+            periodSeconds: 10
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 0
+            periodSeconds: 30
+            failureThreshold: 3
+
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - |
+                    sleep 5
+                    curl -sf http://localhost:8000/v1/completions \
+                      -H "Content-Type: application/json" \
+                      -d '{"model":"llama3","prompt":"Hello","max_tokens":1}' || true
+            preStop:
+              exec:
+                command: ["sleep", "60"]
+
+          env:
+            - name: CUDA_VISIBLE_DEVICES
+              value: "0"
+
+          resources:
+            requests:
+              cpu: "4"
+              memory: 16Gi
+            limits:
+              cpu: "8"
+              memory: 24Gi
+              nvidia.com/gpu: "1"
+
+          volumeMounts:
+            - name: model-cache
+              mountPath: /models
+            - name: shm
+              mountPath: /dev/shm
+
+      volumes:
+        - name: model-cache
+          hostPath:
+            path: /var/lib/models
+            type: DirectoryOrCreate
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Gi
+
+      terminationGracePeriodSeconds: 120

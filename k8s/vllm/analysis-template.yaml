@@ -1,0 +1,42 @@
+# AnalysisTemplate — shared quality gate for all vLLM canary rollouts.
+# Checks two signals from Prometheus every 60s during canary phase:
+#   1. HTTP error rate on the canary pods must stay below 1%
+#   2. p99 TTFT (time-to-first-token) must stay below 3 seconds
+# A single failing interval is tolerated; two consecutive failures abort the rollout.
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: vllm-canary-analysis
+  namespace: llm-serving
+spec:
+  args:
+    - name: service-name      # injected by the Rollout (e.g. llama3-vllm-service)
+    - name: model-name        # injected by the Rollout (e.g. llama3)
+
+  metrics:
+    - name: error-rate
+      interval: 60s
+      failureLimit: 1
+      successCondition: result[0] < 0.01
+      provider:
+        prometheus:
+          address: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+          query: |
+            sum(rate(vllm:request_success_total{model_name="{{args.model-name}}"}[2m]))
+            /
+            (sum(rate(vllm:request_success_total{model_name="{{args.model-name}}"}[2m]))
+             + sum(rate(vllm:request_failure_total{model_name="{{args.model-name}}"}[2m])))
+
+    - name: p99-ttft-seconds
+      interval: 60s
+      failureLimit: 1
+      # histogram_quantile returns seconds; SLO = 3s
+      successCondition: result[0] < 3.0
+      provider:
+        prometheus:
+          address: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+          query: |
+            histogram_quantile(0.99,
+              sum(rate(vllm:time_to_first_token_seconds_bucket{model_name="{{args.model-name}}"}[2m]))
+              by (le)
+            )

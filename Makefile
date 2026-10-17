@@ -4,7 +4,7 @@
 
 .PHONY: help secrets up-eks up-runpod up-vastai \
         deploy-base deploy-karpenter deploy-infra deploy-tracing deploy-argocd deploy-waf \
-        deploy-velero verify-metrics \
+        deploy-rollouts deploy-velero verify-metrics \
         deploy-vllm deploy-sglang deploy-litellm deploy-dashboards deploy-vllm-70b \
         health-check load-test \
         benchmark-lab benchmark-prod benchmark-compare \
@@ -30,13 +30,17 @@ help:
 	@echo "    make up-vastai      Python SDK → Vast.ai instances + k3s"
 	@echo ""
 	@echo "  Deploy (in order)"
-	@echo "    make deploy-base    Namespaces + NetworkPolicies"
-	@echo "    make deploy-infra   Prometheus, KEDA, Traefik, Loki"
-	@echo "    make deploy-velero  Velero cluster + PVC backup (FIX K)"
-	@echo "    make verify-metrics Confirm vLLM/SGLang metric labels"
-	@echo "    make deploy-vllm    Llama3 + Qwen3 on vLLM v0.30.0"
-	@echo "    make deploy-sglang  Llama3 + Qwen3 on SGLang v0.5.20"
-	@echo "    make deploy-litellm LiteLLM gateway"
+	@echo "    make deploy-base      Namespaces + NetworkPolicies"
+	@echo "    make deploy-infra     Prometheus, KEDA, Traefik, Loki"
+	@echo "    make deploy-tracing   Grafana Tempo + OTel Collector"
+	@echo "    make deploy-argocd    Argo CD GitOps (auto-sync every 3 min)"
+	@echo "    make deploy-waf       AWS WAF v2 + ALB in front of Traefik"
+	@echo "    make deploy-rollouts  Argo Rollouts (canary + Prometheus analysis)"
+	@echo "    make deploy-velero    Velero cluster + PVC backup"
+	@echo "    make verify-metrics   Confirm vLLM/SGLang metric labels"
+	@echo "    make deploy-vllm      Llama3 + Qwen3 on vLLM v0.30.0"
+	@echo "    make deploy-sglang    Llama3 + Qwen3 on SGLang v0.5.20"
+	@echo "    make deploy-litellm   LiteLLM gateway"
 	@echo "    make deploy-dashboards Grafana dashboards"
 	@echo ""
 	@echo "  Operations"
@@ -246,6 +250,32 @@ sync:
 	@echo "==> Triggering Argo CD sync for all apps..."
 	argocd app sync --selector app.kubernetes.io/part-of=llm-platform 2>/dev/null || \
 		kubectl annotate applications -n argocd --all argocd.argoproj.io/refresh=hard
+
+# ── Argo Rollouts ──────────────────────────────────────────────────────────────
+# Progressive delivery for vLLM pods: 10% canary → Prometheus analysis → 50% → 100%.
+# Auto-rollback if error rate > 1% or p99 TTFT > 3s during any 60s analysis window.
+# Run AFTER deploy-infra (needs Prometheus running for AnalysisTemplate metrics).
+deploy-rollouts:
+	@echo "==> Installing Argo Rollouts controller..."
+	helm repo add argo https://argoproj.github.io/argo-helm
+	helm repo update
+	helm upgrade --install argo-rollouts argo/argo-rollouts \
+		--namespace argo-rollouts --create-namespace \
+		--values helm/argo-rollouts-values.yaml \
+		--set "dashboard.ingress.hosts[0]=rollouts.$(DNS_ZONE)" \
+		--set "dashboard.ingress.tls[0].hosts[0]=rollouts.$(DNS_ZONE)"
+	kubectl rollout status deployment/argo-rollouts -n argo-rollouts --timeout=120s
+	@echo "==> Applying shared AnalysisTemplate..."
+	kubectl apply -f k8s/vllm/analysis-template.yaml
+	@echo "==> Replacing Llama3 Deployment with Rollout (canary strategy)..."
+	kubectl delete deployment/vllm-llama3 -n llm-serving --ignore-not-found
+	kubectl apply -f k8s/vllm/llama3/rollout.yaml
+	kubectl apply -f k8s/vllm/llama3/service.yaml
+	@echo "==> Argo Rollouts ready."
+	@echo "    Promote:  kubectl argo rollouts promote vllm-llama3 -n llm-serving"
+	@echo "    Abort:    kubectl argo rollouts abort   vllm-llama3 -n llm-serving"
+	@echo "    Status:   kubectl argo rollouts get rollout vllm-llama3 -n llm-serving --watch"
+	@echo "    Dashboard: https://rollouts.$(DNS_ZONE)"
 
 # ── WAF + ALB ──────────────────────────────────────────────────────────────────
 # AWS WAF v2 WebACL (managed rules + rate limiting) attached to an ALB.

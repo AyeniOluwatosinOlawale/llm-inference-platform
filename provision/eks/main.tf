@@ -52,14 +52,17 @@ module "eks" {
 
     }
 
-    # CPU node: LiteLLM, Redis, Postgres, KEDA, Prometheus, Grafana, Loki
+    # CPU nodes: LiteLLM, Redis, Postgres, KEDA, Prometheus, Grafana, Loki
+    # Spot with 3 equivalent instance types for ~70% cost reduction + interruption resilience.
+    # min_size=2 so one interruption never takes the pool to zero.
     cpu = {
       name           = "cpu-nodes"
-      instance_types = [var.cpu_instance_type]
+      instance_types = ["m5.xlarge", "m5a.xlarge", "m5d.xlarge"]
+      capacity_type  = "SPOT"
       ami_type       = "AL2_x86_64"
 
-      min_size     = 1
-      max_size     = 3
+      min_size     = 2
+      max_size     = 4
       desired_size = var.cpu_node_count
 
       disk_size = 50
