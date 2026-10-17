@@ -66,7 +66,7 @@ up-runpod:
 
 up-vastai:
 	@echo "==> Provisioning Vast.ai instances + k3s..."
-	cd provision/vastai && python vastai.py create
+	cd provision/vastai && python3 vastai.py create
 	@echo "    Follow the kubeconfig instructions printed above."
 
 # ── Deploy ─────────────────────────────────────────────────────────────────────
@@ -196,5 +196,5 @@ teardown:
 		cd provision/runpod && terraform destroy; \
 	fi
 	@if [ -f provision/vastai/state.json ]; then \
-		cd provision/vastai && python vastai.py destroy; \
+		cd provision/vastai && python3 vastai.py destroy; \
 	fi

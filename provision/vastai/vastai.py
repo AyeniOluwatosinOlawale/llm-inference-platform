@@ -60,61 +60,105 @@ def save_state(state: dict) -> None:
 
 
 def build_gpu_query(cfg: dict) -> str:
-    gpu_names = " ".join(f'"{g}"' for g in cfg["gpu_names"])
+    gpu_names = "[" + ",".join(f'"{g}"' for g in cfg["gpu_names"]) + "]"
+    # Note: reliability2 is no longer a valid Vast.ai search field — omitted.
+    # gpu_ram filter removed: large integer values are buggy in Vast.ai query parser.
+    # Filter by gpu_name instead to ensure VRAM requirements.
     return (
-        f"gpu_name in [{gpu_names}] "
-        f"gpu_ram >= {cfg['min_gpu_vram_gb'] * 1024} "
-        f"num_gpus = {cfg['num_gpus']} "
+        f"gpu_name in {gpu_names} "
+        f"num_gpus >= {cfg['num_gpus']} "
         f"cpu_cores >= {cfg['min_cpu_cores']} "
-        f"cpu_ram >= {cfg['min_ram_gb'] * 1024} "
         f"disk_space >= {cfg['min_disk_gb']} "
-        f"rentable = true "
-        f"reliability2 >= 0.95 "
-        f"inet_up >= 500 inet_down >= 500"
+        f"rentable=true "
+        f"inet_up >= 1000 inet_down >= 1000"
     )
+
+
+def vastai_cmd(*args) -> list[str]:
+    """Build a vastai CLI command with the API key injected."""
+    return ["vastai", "--api-key", API_KEY] + list(args)
 
 
 def search_offers(query: str) -> list[dict]:
     result = subprocess.run(
-        ["vastai", "search", "offers", query, "--raw", "--limit", "10"],
+        vastai_cmd("search", "offers", query, "--raw", "--limit", "20"),
         capture_output=True, text=True
     )
     if result.returncode != 0:
         raise RuntimeError(f"vastai search failed: {result.stderr}")
-    return json.loads(result.stdout)
+    try:
+        # Strip any warning lines before the JSON array
+        stdout = result.stdout
+        idx = stdout.find("[")
+        if idx > 0:
+            stdout = stdout[idx:]
+        return json.loads(stdout)
+    except json.JSONDecodeError:
+        return []
 
 
 def create_instance(offer_id: int, image: str, cloud_init_path: Path, label: str) -> dict:
-    with open(cloud_init_path) as f:
-        user_data = f.read()
-
+    ssh_pub_key = Path(os.path.expanduser("~/.ssh/id_vastai.pub")).read_text().strip()
+    onstart_script = cloud_init_path.read_text()
+    # Embed the SSH public key directly into the onstart script so it is
+    # available without relying on env var injection (which Vast.ai does not
+    # reliably propagate into running containers).
+    onstart_script = onstart_script.replace("__SSH_PUBLIC_KEY__", ssh_pub_key)
+    # Pass SSH_PUBLIC_KEY + expose Jupyter (8080) for fallback access
+    # cap-add flags grant Linux capabilities needed for k3s/kubelet inside Vast.ai containers
+    env_str = f"--cap-add SYS_ADMIN --cap-add NET_ADMIN --cap-add NET_RAW -e SSH_PUBLIC_KEY={ssh_pub_key} -p 8080:8080"
     result = subprocess.run(
-        [
-            "vastai", "create", "instance", str(offer_id),
+        vastai_cmd(
+            "create", "instance", str(offer_id),
             "--image", image,
             "--disk", "100",
-            "--env", f"VASTAI_LABEL={label}",
-            "--onstart", "sh -c 'echo started'",
+            "--ssh", "--direct",
+            "--jupyter",
+            "--label", label,
+            "--env", env_str,
+            "--onstart-cmd", onstart_script,
             "--raw",
-        ],
-        input=user_data,
+        ),
         capture_output=True, text=True
     )
     if result.returncode != 0:
         raise RuntimeError(f"vastai create instance failed: {result.stderr}")
-    return json.loads(result.stdout)
+    try:
+        stdout = result.stdout
+        idx = stdout.find("{")
+        if idx > 0:
+            stdout = stdout[idx:]
+        data = json.loads(stdout)
+        if not data.get("success"):
+            raise RuntimeError(f"vastai create instance failed: {data}")
+        return data
+    except json.JSONDecodeError:
+        raise RuntimeError(f"vastai create instance unexpected output: {result.stdout}\n{result.stderr}")
 
 
-def wait_for_ssh(instance_id: int, timeout: int = 300) -> str:
+def wait_for_ssh(instance_id: int, timeout: int = 900) -> str:
     """Poll until instance is running and return SSH host:port."""
     deadline = time.time() + timeout
     while time.time() < deadline:
         result = subprocess.run(
-            ["vastai", "show", "instance", str(instance_id), "--raw"],
+            vastai_cmd("show", "instance", str(instance_id), "--raw"),
             capture_output=True, text=True
         )
-        info = json.loads(result.stdout)
+        stdout = result.stdout
+        idx = stdout.find("{")
+        if idx > 0:
+            stdout = stdout[idx:]
+        try:
+            info = json.loads(stdout)
+        except json.JSONDecodeError:
+            info = {}
         if info.get("actual_status") == "running" and info.get("ssh_host"):
+            # Prefer direct connection over Vast.ai proxy (proxy resets connections)
+            ports = info.get("ports") or {}
+            direct = ports.get("22/tcp", [{}])[0].get("HostPort")
+            public_ip = info.get("public_ipaddr")
+            if direct and public_ip:
+                return f"{public_ip}:{direct}"
             return f"{info['ssh_host']}:{info['ssh_port']}"
         print(f"  Waiting for instance {instance_id}... ({info.get('actual_status', 'unknown')})")
         time.sleep(15)
@@ -123,7 +167,7 @@ def wait_for_ssh(instance_id: int, timeout: int = 300) -> str:
 
 def destroy_instance(instance_id: int) -> None:
     subprocess.run(
-        ["vastai", "destroy", "instance", str(instance_id)],
+        vastai_cmd("destroy", "instance", str(instance_id)),
         check=True
     )
 
@@ -132,74 +176,103 @@ def cmd_create(args) -> None:
     cfg = load_config()
     state = load_state()
 
-    print("==> Searching for control plane offer...")
-    # Control plane can be a cheap CPU instance
-    cp_cfg = cfg["control_plane"]
-    cp_query = (
-        f"num_gpus = 0 cpu_cores >= {cp_cfg['min_cpu_cores']} "
-        f"cpu_ram >= {cp_cfg['min_ram_gb'] * 1024} "
-        f"disk_space >= {cp_cfg['min_disk_gb']} rentable = true"
-    )
-    cp_offers = search_offers(cp_query)
-    if not cp_offers:
-        raise RuntimeError("No suitable control plane offers found")
-
-    cp_offer = sorted(cp_offers, key=lambda x: x["dph_total"])[0]
-    print(f"    Selected offer {cp_offer['id']} @ ${cp_offer['dph_total']:.4f}/hr")
-
-    print("==> Creating control plane instance...")
-    cp_inst = create_instance(
-        cp_offer["id"], cp_cfg["image"],
-        CLOUD_INIT_DIR / "server.yaml", "k3s-server"
-    )
-    state["control_plane"] = cp_inst
-    save_state(state)
-
-    print(f"==> Waiting for control plane {cp_inst['new_contract']}...")
-    cp_ssh = wait_for_ssh(cp_inst["new_contract"])
-    state["control_plane"]["ssh"] = cp_ssh
-    save_state(state)
-
-    print("==> Fetching k3s join token...")
-    time.sleep(60)  # allow k3s server to start
-    token_result = subprocess.run(
-        ["ssh", "-o", "StrictHostKeyChecking=no", "-p",
-         cp_ssh.split(":")[1], f"root@{cp_ssh.split(':')[0]}",
-         "cat /var/lib/rancher/k3s/server/node-token"],
-        capture_output=True, text=True
-    )
-    k3s_token = token_result.stdout.strip()
-    state["k3s_token"] = k3s_token
-    state["k3s_server_ip"] = cp_ssh.split(":")[0]
-    save_state(state)
-
-    print(f"==> Provisioning {cfg['gpu_workers']['count']} GPU worker(s)...")
+    # Use a GPU node as control plane — avoids unavailable cheap CPU-only instances on Vast.ai
     worker_cfg = cfg["gpu_workers"]
+    print("==> Searching for GPU offers...")
     gpu_offers = search_offers(build_gpu_query(worker_cfg))
     if not gpu_offers:
         raise RuntimeError("No suitable GPU offers found")
 
     gpu_offers_sorted = sorted(gpu_offers, key=lambda x: x["dph_total"])
-    for i in range(worker_cfg["count"]):
-        offer = gpu_offers_sorted[i % len(gpu_offers_sorted)]
-        print(f"  Worker {i+1}: offer {offer['id']} @ ${offer['dph_total']:.4f}/hr ({offer.get('gpu_name','?')})")
+    used_offer_ids = set()
 
-        # Inject k3s join info into cloud-init
-        agent_init = (CLOUD_INIT_DIR / "agent.yaml").read_text()
+    # First GPU node = k3s server (control plane + worker)
+    print("==> Provisioning control plane GPU node...")
+    cp_inst = None
+    for offer in gpu_offers_sorted:
+        print(f"    Trying offer {offer['id']} @ ${offer['dph_total']:.4f}/hr ({offer.get('gpu_name','?')})...")
+        try:
+            cp_inst = create_instance(
+                offer["id"], worker_cfg["image"],
+                CLOUD_INIT_DIR / "server.sh", "k3s-server"
+            )
+            used_offer_ids.add(offer["id"])
+            break
+        except RuntimeError as e:
+            print(f"    Unavailable: {e}")
+    if not cp_inst:
+        raise RuntimeError("All GPU offers failed — check your Vast.ai account balance and payment method")
+
+    state["control_plane"] = cp_inst
+    save_state(state)
+
+    print(f"==> Waiting for control plane {cp_inst['new_contract']} to start...")
+    cp_ssh = wait_for_ssh(cp_inst["new_contract"])
+    state["control_plane"]["ssh"] = cp_ssh
+    save_state(state)
+
+    # Wait for k3s bootstrap script to complete (installs k3s, ~5 min)
+    print("==> Waiting for k3s server bootstrap (5 min)...")
+    time.sleep(300)
+
+    # Poll until the node token file exists
+    cp_host, cp_port = cp_ssh.rsplit(":", 1)
+    ssh_base = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "PubkeyAuthentication=unbound",
+                "-i", str(Path.home() / ".ssh" / "id_vastai"), "-p", cp_port, f"root@{cp_host}"]
+    print("==> Fetching k3s node token...")
+    k3s_token = ""
+    for attempt in range(20):
+        token_result = subprocess.run(
+            ssh_base + ["cat /var/lib/rancher/k3s/server/node-token"],
+            capture_output=True, text=True
+        )
+        k3s_token = token_result.stdout.strip()
+        if k3s_token:
+            break
+        print(f"  k3s not ready yet, waiting 30s (attempt {attempt+1}/20)...")
+        time.sleep(30)
+    if not k3s_token:
+        raise RuntimeError("k3s token never appeared — bootstrap may have failed. Check /var/log/k3s-bootstrap.log on the instance.")
+
+    # Get the public IP of the control plane for the agent to join
+    ip_result = subprocess.run(
+        ssh_base + ["bash", "-c", "curl -s ifconfig.me || curl -s api.ipify.org"],
+        capture_output=True, text=True
+    )
+    k3s_server_ip = ip_result.stdout.strip() or cp_host
+    state["k3s_token"] = k3s_token
+    state["k3s_server_ip"] = k3s_server_ip
+    save_state(state)
+
+    # Remaining GPU nodes = k3s agents
+    remaining_offers = [o for o in gpu_offers_sorted if o["id"] not in used_offer_ids]
+    for i in range(worker_cfg["count"] - 1):
+        # Inject k3s join info into bootstrap shell script
+        agent_init = (CLOUD_INIT_DIR / "agent.sh").read_text()
         agent_init = agent_init.replace("__K3S_URL__", f"https://{state['k3s_server_ip']}:6443")
         agent_init = agent_init.replace("__K3S_TOKEN__", k3s_token)
-        tmp_init = Path(f"/tmp/agent-{i}.yaml")
+        tmp_init = Path(f"/tmp/agent-{i}.sh")
         tmp_init.write_text(agent_init)
 
-        worker_inst = create_instance(
-            offer["id"], worker_cfg["image"], tmp_init, f"k3s-agent-{i}"
-        )
+        worker_inst = None
+        for offer in remaining_offers:
+            print(f"  Worker {i+1}: trying offer {offer['id']} @ ${offer['dph_total']:.4f}/hr ({offer.get('gpu_name','?')})")
+            try:
+                worker_inst = create_instance(
+                    offer["id"], worker_cfg["image"], tmp_init, f"k3s-agent-{i}"
+                )
+                remaining_offers.remove(offer)
+                break
+            except RuntimeError as e:
+                print(f"    Offer unavailable, trying next... ({e})")
+        if not worker_inst:
+            raise RuntimeError(f"Could not provision GPU worker {i+1} — no offers available")
         state["gpu_workers"].append(worker_inst)
         save_state(state)
 
     print("\n==> Cluster provisioned. Fetch kubeconfig:")
-    print(f"    ssh -p {cp_ssh.split(':')[1]} root@{cp_ssh.split(':')[0]} cat /etc/rancher/k3s/k3s.yaml > kubeconfig")
-    print(f"    sed -i 's/127.0.0.1/{cp_ssh.split(':')[0]}/' kubeconfig")
+    print(f"    ssh -i ~/.ssh/id_vastai -p {cp_port} root@{cp_host} cat /etc/rancher/k3s/k3s.yaml > kubeconfig")
+    print(f"    sed -i 's/127.0.0.1/{k3s_server_ip}/' kubeconfig")
     print("    export KUBECONFIG=$(pwd)/kubeconfig")
 
 
