@@ -27,11 +27,7 @@ module "eks" {
   # ── Node groups ──────────────────────────────────────────────────────────
 
   eks_managed_node_groups = {
-    # GPU nodes: one A10G per node, for vLLM + SGLang pods.
-    # Karpenter (k8s/karpenter/) adds a second provisioning path that cuts
-    # cold-start from ~5 min to ~90 s and uses spot instances automatically.
-    # Both mechanisms coexist — managed node group provides a stable baseline,
-    # Karpenter handles burst scale-out.
+    # GPU nodes: one A10G per node, for vLLM + SGLang pods
     gpu = {
       name           = "gpu-nodes"
       instance_types = [var.gpu_instance_type]
@@ -55,13 +51,12 @@ module "eks" {
       ]
 
       tags = {
-        "k8s.io/cluster-autoscaler/enabled"             = "true"
-        "k8s.io/cluster-autoscaler/${var.cluster_name}" = "owned"
+        "k8s.io/cluster-autoscaler/enabled"                  = "true"
+        "k8s.io/cluster-autoscaler/${var.cluster_name}"      = "owned"
       }
     }
 
-    # CPU node: Karpenter controller, LiteLLM, Redis, Postgres, KEDA, Prometheus, Grafana, Loki.
-    # Must exist before Karpenter is installed — Karpenter itself needs a node to land on.
+    # CPU node: LiteLLM, Redis, Postgres, KEDA, Prometheus, Grafana, Loki
     cpu = {
       name           = "cpu-nodes"
       instance_types = [var.cpu_instance_type]
