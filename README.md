@@ -38,14 +38,14 @@ Virtual aliases `llama3` and `qwen3` round-robin across both engines for live A/
 
 ## Providers
 
-| | AWS EKS (primary) | RunPod | Vast.ai |
-|---|---|---|---|
-| Provisioning | Terraform (hashicorp/aws + eks module) | Terraform (`terraform-provider-runpod`) | Python SDK (`vastai`) |
-| Kubernetes | EKS 1.30 managed | RunPod managed K8s | k3s bootstrapped via cloud-init |
-| Secrets encryption | KMS CMK (etcd) | KMS CMK | k3s `--secrets-encryption` |
-| State backend | S3 + DynamoDB | S3 + DynamoDB | Supabase Storage |
-| GPU (24 GB) | A10G (g5.xlarge) | A10G / RTX 4090 | RTX 4090 / A40 |
-| Cost/hr (2 GPU nodes) | ~$2.10 | ~$1.60 | ~$1.20 |
+| | AWS EKS |
+|---|---|
+| Provisioning | Terraform (hashicorp/aws + eks module) |
+| Kubernetes | EKS 1.30 managed |
+| Secrets encryption | KMS CMK (etcd) |
+| State backend | S3 + DynamoDB |
+| GPU | A10G 24GB (g5.xlarge) |
+| Cost/hr (2 GPU nodes) | ~$2.10 |
 
 ## Models & Engines
 
@@ -59,8 +59,8 @@ Virtual aliases `llama3` and `qwen3` round-robin across both engines for live A/
 ## Platform Features
 
 - **KEDA autoscaling** on Prometheus queue depth and KV-cache pressure — `scripts/verify-metrics.sh` confirms metric label alignment before any ScaledObject is applied
-- **Secrets encrypted at rest** — k3s `--secrets-encryption` (Vast.ai) and KMS CMK (RunPod)
-- **Remote state** — S3 + DynamoDB (RunPod Terraform) and Supabase Storage (Vast.ai)
+- **Secrets encrypted at rest** — KMS CMK encrypts etcd on EKS
+- **Remote state** — S3 + DynamoDB Terraform backend
 - **Per-node NVMe model cache** — init container checks `/var/lib/models` before downloading; repeat starts take ~30s instead of ~5 min
 - **6 PrometheusRules** covering queue spikes, KV-cache saturation, pod crash loops, pod not-ready, and Prometheus disk pressure
 - **Egress NetworkPolicies** on all namespaces — explicit allowlist for DNS, HuggingFace HTTPS, and inter-service traffic
@@ -79,10 +79,8 @@ Virtual aliases `llama3` and `qwen3` round-robin across both engines for live A/
 make secrets
 # Edit .env.secrets: set SLACK_WEBHOOK_URL, VELERO_BACKUP_BUCKET, HUGGINGFACE_TOKEN
 
-# 2. Provision cluster (choose one)
-make up-eks          # Terraform → AWS EKS (g5.xlarge GPU nodes, recommended)
-make up-runpod       # Terraform → RunPod managed K8s
-make up-vastai       # Python SDK → Vast.ai instances + k3s
+# 2. Provision cluster
+make up-eks          # Terraform → AWS EKS (g5.xlarge GPU nodes)
 
 # 3. Deploy platform
 make deploy-base      # Namespaces + NetworkPolicies
@@ -109,9 +107,6 @@ make benchmark-compare \
 
 ```
 provision/eks/           Terraform for AWS EKS (VPC, KMS, GPU + CPU node groups)
-provision/runpod/        Terraform for RunPod managed K8s
-provision/lambda/        Lambda Labs kubeadm provisioner + cloud-init
-provision/vastai/        Python SDK provisioner + k3s cloud-init
 k8s/base/                Namespaces + NetworkPolicies (ingress + egress)
 k8s/vllm/llama3/         Llama 3.1 8B on vLLM — deployment, service, KEDA ScaledObject
 k8s/vllm/qwen3/          Qwen3 8B on vLLM — deployment, service, KEDA ScaledObject
