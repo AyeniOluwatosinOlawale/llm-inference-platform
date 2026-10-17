@@ -1,6 +1,6 @@
 # llm-inference-platform
 
-Production-grade LLM inference platform on **AWS EKS** (primary) with commodity GPU cloud alternatives — **RunPod** and **Vast.ai**. Serves **Llama 3.1 8B** and **Qwen3 8B** on both **vLLM v0.30.0** and **SGLang v0.5.20** behind a LiteLLM proxy gateway, with full observability, autoscaling, and cluster backup.
+Production-grade LLM inference platform on **AWS EKS**. Serves **Llama 3.1 8B** and **Qwen3 8B** on both **vLLM v0.30.0** and **SGLang v0.5.20** behind a LiteLLM proxy gateway, with full observability, autoscaling, and cluster backup.
 
 Companion to [inference-optimizer-lab2](https://github.com/AyeniOluwatosinOlawale/inference-optimizer-lab2): the lab measures how inference engines behave at different concurrency levels; this platform provisions and operates the infrastructure to serve a real production workload.
 
