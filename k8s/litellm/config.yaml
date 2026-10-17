@@ -44,30 +44,36 @@ data:
           input_cost_per_token: 0.0000002
           output_cost_per_token: 0.0000002
 
-      # ── Virtual aliases (round-robin across both engines) ──────────────────────
-      # Use these when you want LiteLLM to load-balance between vLLM and SGLang
-      # automatically. Great for A/B traffic splitting in production.
+      # ── Virtual aliases (weighted routing across both engines) ─────────────────
+      # Default: 50/50 split between vLLM and SGLang.
+      # Adjust with: make canary ENGINE=vllm WEIGHT=90   (shift 90% to vLLM)
+      #              make promote ENGINE=vllm              (100% to vLLM)
+      #              make rollback                         (reset to 50/50)
       - model_name: llama3
         litellm_params:
           model: openai/llama3
           api_base: http://llama3-vllm-service.llm-serving.svc.cluster.local:8000/v1
           api_key: "none"
+          weight: 1
       - model_name: llama3
         litellm_params:
           model: openai/llama3-sglang
           api_base: http://llama3-sglang-service.llm-serving.svc.cluster.local:30000/v1
           api_key: "none"
+          weight: 1
 
       - model_name: qwen3
         litellm_params:
           model: openai/qwen3
           api_base: http://qwen3-vllm-service.llm-serving.svc.cluster.local:8000/v1
           api_key: "none"
+          weight: 1
       - model_name: qwen3
         litellm_params:
           model: openai/qwen3-sglang
           api_base: http://qwen3-sglang-service.llm-serving.svc.cluster.local:30000/v1
           api_key: "none"
+          weight: 1
 
     router_settings:
       routing_strategy: least-busy

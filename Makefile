@@ -7,6 +7,7 @@
         deploy-vllm deploy-sglang deploy-litellm deploy-dashboards \
         health-check load-test \
         benchmark-lab benchmark-prod benchmark-compare \
+        canary promote rollback \
         redeploy-vllm redeploy-sglang teardown
 
 # Load secrets if the file exists
@@ -172,13 +173,21 @@ deploy-sglang:
 
 deploy-litellm:
 	@echo "==> Injecting LiteLLM secrets..."
+	$(eval RDS_ENDPOINT := $(shell cd provision/eks && terraform output -raw rds_endpoint 2>/dev/null))
+	$(eval RDS_PASSWORD := $(shell cd provision/eks && terraform output -raw rds_password 2>/dev/null))
+	$(eval DB_URL       := $(if $(RDS_ENDPOINT),postgresql://litellm:$(RDS_PASSWORD)@$(RDS_ENDPOINT)/litellm,postgresql://litellm:$(POSTGRES_PASSWORD)@postgres-service.llm-gateway.svc.cluster.local:5432/litellm))
 	kubectl create secret generic litellm-secrets -n llm-gateway \
 		--from-literal=LITELLM_MASTER_KEY="$(LITELLM_MASTER_KEY)" \
 		--from-literal=REDIS_PASSWORD="$(REDIS_PASSWORD)" \
 		--from-literal=POSTGRES_PASSWORD="$(POSTGRES_PASSWORD)" \
-		--from-literal=DATABASE_URL="postgresql://litellm:$(POSTGRES_PASSWORD)@postgres-service.llm-gateway.svc.cluster.local:5432/litellm" \
+		--from-literal=DATABASE_URL="$(DB_URL)" \
 		--dry-run=client -o yaml | kubectl apply -f -
-	kubectl apply -f k8s/litellm/postgres.yaml
+	@if [ -z "$(RDS_ENDPOINT)" ]; then \
+		echo "    RDS not provisioned — deploying in-cluster Postgres fallback"; \
+		kubectl apply -f k8s/litellm/postgres.yaml; \
+	else \
+		echo "    Using RDS endpoint: $(RDS_ENDPOINT)"; \
+	fi
 	kubectl apply -f k8s/litellm/redis.yaml
 	kubectl apply -f k8s/litellm/config.yaml
 	kubectl apply -f k8s/litellm/deployment.yaml
@@ -203,6 +212,28 @@ redeploy-vllm:
 redeploy-sglang:
 	kubectl rollout restart deployment/sglang-llama3 -n llm-serving
 	kubectl rollout restart deployment/sglang-qwen3  -n llm-serving
+
+# ── Canary / Progressive Rollout ───────────────────────────────────────────────
+# Shifts LiteLLM weighted routing between vLLM and SGLang without redeploying pods.
+# Default traffic split is 50/50 (weight=1 each in k8s/litellm/config.yaml).
+#
+# Examples:
+#   make canary ENGINE=vllm WEIGHT=90     # send 90% to vLLM, 10% to SGLang
+#   make canary ENGINE=sglang WEIGHT=75   # send 75% to SGLang, 25% to vLLM
+#   make promote ENGINE=vllm              # send 100% to vLLM
+#   make rollback                         # reset to 50/50
+
+ENGINE ?= vllm
+WEIGHT ?= 90
+
+canary:
+	@ENGINE=$(ENGINE) WEIGHT=$(WEIGHT) bash scripts/canary.sh canary --engine $(ENGINE) --weight $(WEIGHT)
+
+promote:
+	@ENGINE=$(ENGINE) bash scripts/canary.sh promote --engine $(ENGINE)
+
+rollback:
+	@bash scripts/canary.sh rollback
 
 # ── Benchmarks (lab2 integration) ──────────────────────────────────────────────
 
