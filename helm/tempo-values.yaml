@@ -1,0 +1,42 @@
+# Grafana Tempo — distributed tracing backend
+# Install via: make deploy-tracing
+# Receives OTLP traces from LiteLLM, vLLM, and SGLang pods.
+
+tempo:
+  storage:
+    trace:
+      backend: local
+      local:
+        path: /var/tempo/traces
+
+  # Retain traces for 72 hours — enough to debug latency incidents.
+  retention: 72h
+
+  # Pin to CPU nodes.
+  nodeSelector:
+    workload-type: cpu
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+
+  persistence:
+    enabled: true
+    size: 10Gi
+
+  # Expose OTLP gRPC (4317) and HTTP (4318) for in-cluster senders.
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: "0.0.0.0:4317"
+        http:
+          endpoint: "0.0.0.0:4318"
+
+  # Expose query endpoint for Grafana datasource.
+  service:
+    type: ClusterIP

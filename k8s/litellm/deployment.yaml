@@ -45,6 +45,13 @@ spec:
                 secretKeyRef:
                   name: litellm-secrets
                   key: DATABASE_URL
+            # Distributed tracing — sends spans to the OTel Collector → Tempo.
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://opentelemetry-collector.monitoring.svc.cluster.local:4317"
+            - name: OTEL_SERVICE_NAME
+              value: "litellm-proxy"
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
           readinessProbe:
             httpGet:
               path: /health/readiness

@@ -80,6 +80,21 @@ grafana:
       label: grafana_dashboard
       searchNamespace: monitoring
       folder: /var/lib/grafana/dashboards/llm-platform
+  # Tempo datasource — links traces from LiteLLM/vLLM to Grafana Explore.
+  additionalDataSources:
+    - name: Tempo
+      type: tempo
+      url: http://tempo.monitoring.svc.cluster.local:3100
+      access: proxy
+      isDefault: false
+      jsonData:
+        httpMethod: GET
+        serviceMap:
+          datasourceUid: prometheus
+        nodeGraph:
+          enabled: true
+        lokiSearch:
+          datasourceUid: loki
   ingress:
     enabled: true
     ingressClassName: traefik

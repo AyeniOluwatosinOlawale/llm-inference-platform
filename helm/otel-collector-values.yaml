@@ -1,0 +1,53 @@
+# OpenTelemetry Collector — receives traces from all pods, forwards to Tempo.
+# Acts as a buffer/fan-out so apps only need one OTLP endpoint.
+# Install via: make deploy-tracing
+
+mode: deployment
+
+replicaCount: 1
+
+nodeSelector:
+  workload-type: cpu
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: "0.0.0.0:4317"
+        http:
+          endpoint: "0.0.0.0:4318"
+
+  processors:
+    batch:
+      timeout: 5s
+      send_batch_size: 1024
+    # Drop high-cardinality health-check spans to reduce Tempo storage.
+    filter/drop_health:
+      spans:
+        exclude:
+          match_type: strict
+          attributes:
+            - key: http.target
+              value: "/health"
+
+  exporters:
+    otlp/tempo:
+      endpoint: "tempo.monitoring.svc.cluster.local:4317"
+      tls:
+        insecure: true
+
+  service:
+    pipelines:
+      traces:
+        receivers:  [otlp]
+        processors: [batch, filter/drop_health]
+        exporters:  [otlp/tempo]

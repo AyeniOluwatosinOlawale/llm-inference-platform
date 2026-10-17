@@ -82,6 +82,7 @@ spec:
             - --gpu-memory-utilization=0.90
             - --enable-prefix-caching
             - --tensor-parallel-size=1
+            - --otlp-traces-endpoint=http://opentelemetry-collector.monitoring.svc.cluster.local:4317
             - --port=8000
             - --host=0.0.0.0
           ports:

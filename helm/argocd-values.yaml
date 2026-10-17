@@ -1,0 +1,60 @@
+# Argo CD Helm values
+# Install via: make deploy-argocd
+# After install, Application manifests in k8s/argocd/ register each platform
+# component. Argo CD then self-heals the cluster to match the GitHub repo.
+
+global:
+  nodeSelector:
+    workload-type: cpu
+
+server:
+  replicas: 2
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      traefik.ingress.kubernetes.io/router.entrypoints: websecure
+      traefik.ingress.kubernetes.io/router.tls: "true"
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    hosts:
+      - argocd.${DNS_ZONE}
+    tls:
+      - secretName: argocd-tls
+        hosts:
+          - argocd.${DNS_ZONE}
+
+  # Disable insecure mode — TLS terminated at Traefik.
+  extraArgs:
+    - --insecure
+
+controller:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+repoServer:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+redis:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+applicationSet:
+  replicas: 2
+
+configs:
+  params:
+    # Sync every 3 minutes — fast enough to catch drift, slow enough not to hammer the API.
+    "application.instanceLabelKey": "argocd.argoproj.io/app-name"
+    "timeout.reconciliation": "180s"

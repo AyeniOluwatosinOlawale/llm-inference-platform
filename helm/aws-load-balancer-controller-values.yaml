@@ -1,0 +1,24 @@
+# AWS Load Balancer Controller Helm values
+# Install via: make deploy-waf (which installs this chart first)
+# Creates the ALB that the WAF WebACL is attached to.
+
+clusterName: "${CLUSTER_NAME}"
+
+serviceAccount:
+  create: true
+  name: aws-load-balancer-controller
+  annotations:
+    eks.amazonaws.com/role-arn: "${ALB_CONTROLLER_ROLE_ARN}"
+
+nodeSelector:
+  workload-type: cpu
+
+replicaCount: 2
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

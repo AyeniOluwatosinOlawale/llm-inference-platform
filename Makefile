@@ -3,11 +3,12 @@
 # Lab integration: inference-optimizer-lab2 (VLLMClient / SGLangClient)
 
 .PHONY: help secrets up-eks up-runpod up-vastai \
-        deploy-base deploy-karpenter deploy-infra deploy-velero verify-metrics \
+        deploy-base deploy-karpenter deploy-infra deploy-tracing deploy-argocd deploy-waf \
+        deploy-velero verify-metrics \
         deploy-vllm deploy-sglang deploy-litellm deploy-dashboards deploy-vllm-70b \
         health-check load-test \
         benchmark-lab benchmark-prod benchmark-compare \
-        canary promote rollback \
+        canary promote rollback sync \
         redeploy-vllm redeploy-sglang teardown
 
 # Load secrets if the file exists
@@ -202,6 +203,70 @@ deploy-litellm:
 
 deploy-dashboards:
 	kubectl apply -f k8s/monitoring/dashboards/dashboards-configmap.yaml
+
+# ── Distributed Tracing ────────────────────────────────────────────────────────
+# Grafana Tempo (backend) + OpenTelemetry Collector (receiver/fan-out).
+# LiteLLM and vLLM send OTLP traces → OTel Collector → Tempo → Grafana Explore.
+deploy-tracing:
+	@echo "==> Installing Grafana Tempo..."
+	helm repo add grafana https://grafana.github.io/helm-charts
+	helm repo update
+	helm upgrade --install tempo grafana/tempo \
+		--namespace monitoring --create-namespace \
+		--values helm/tempo-values.yaml
+	@echo "==> Installing OpenTelemetry Collector..."
+	helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+	helm repo update
+	helm upgrade --install opentelemetry-collector open-telemetry/opentelemetry-collector \
+		--namespace monitoring \
+		--values helm/otel-collector-values.yaml
+	@echo "==> Tracing stack ready. Grafana Explore → Tempo datasource."
+
+# ── Argo CD GitOps ─────────────────────────────────────────────────────────────
+# Self-heals the cluster to match the GitHub repo every 3 minutes.
+# After install, apply apps.yaml to register all platform components.
+deploy-argocd:
+	@echo "==> Installing Argo CD..."
+	helm repo add argo https://argoproj.github.io/argo-helm
+	helm repo update
+	helm upgrade --install argocd argo/argo-cd \
+		--namespace argocd --create-namespace \
+		--values helm/argocd-values.yaml \
+		--set "server.ingress.hosts[0]=argocd.$(DNS_ZONE)" \
+		--set "server.ingress.tls[0].hosts[0]=argocd.$(DNS_ZONE)"
+	@echo "==> Waiting for Argo CD server..."
+	kubectl rollout status deployment/argocd-server -n argocd --timeout=120s
+	@echo "==> Registering platform Applications..."
+	kubectl apply -f k8s/argocd/project.yaml
+	kubectl apply -f k8s/argocd/apps.yaml
+	@echo "==> Argo CD ready at https://argocd.$(DNS_ZONE)"
+	@echo "    Initial admin password: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d"
+
+sync:
+	@echo "==> Triggering Argo CD sync for all apps..."
+	argocd app sync --selector app.kubernetes.io/part-of=llm-platform 2>/dev/null || \
+		kubectl annotate applications -n argocd --all argocd.argoproj.io/refresh=hard
+
+# ── WAF + ALB ──────────────────────────────────────────────────────────────────
+# AWS WAF v2 WebACL (managed rules + rate limiting) attached to an ALB.
+# ALB sits in front of Traefik: Internet → ALB(WAF) → Traefik → backends.
+deploy-waf:
+	@echo "==> Reading WAF and ALB config from Terraform outputs..."
+	$(eval WAF_ACL_ARN          := $(shell cd provision/eks && terraform output -raw waf_acl_arn 2>/dev/null))
+	$(eval ALB_CONTROLLER_ROLE  := $(shell cd provision/eks && terraform output -raw alb_controller_role_arn 2>/dev/null))
+	@echo "==> Installing AWS Load Balancer Controller..."
+	helm repo add eks https://aws.github.io/eks-charts
+	helm repo update
+	helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+		--namespace kube-system \
+		--values helm/aws-load-balancer-controller-values.yaml \
+		--set "clusterName=$(CLUSTER_NAME)" \
+		--set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=$(ALB_CONTROLLER_ROLE)"
+	kubectl rollout status deployment/aws-load-balancer-controller -n kube-system --timeout=120s
+	@echo "==> Applying ALB Ingress with WAF annotation..."
+	sed "s|\$${WAF_ACL_ARN}|$(WAF_ACL_ARN)|g" \
+		k8s/base/alb-ingress.yaml | kubectl apply -f -
+	@echo "==> WAF active. ALB provisioning takes ~2 min. Check: kubectl get ingress -n traefik"
 
 # ── Operations ─────────────────────────────────────────────────────────────────
 

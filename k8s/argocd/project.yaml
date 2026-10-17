@@ -1,0 +1,38 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: llm-platform
+  namespace: argocd
+spec:
+  description: "Production LLM inference platform"
+
+  sourceRepos:
+    - "https://github.com/AyeniOluwatosinOlawale/llm-inference-platform.git"
+
+  destinations:
+    - namespace: llm-serving
+      server: https://kubernetes.default.svc
+    - namespace: llm-gateway
+      server: https://kubernetes.default.svc
+    - namespace: monitoring
+      server: https://kubernetes.default.svc
+    - namespace: karpenter
+      server: https://kubernetes.default.svc
+    - namespace: keda
+      server: https://kubernetes.default.svc
+    - namespace: traefik
+      server: https://kubernetes.default.svc
+
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+    - group: karpenter.sh
+      kind: NodePool
+    - group: karpenter.k8s.aws
+      kind: EC2NodeClass
+
+  # Only allow syncs from the main branch.
+  sourceNamespaces:
+    - argocd

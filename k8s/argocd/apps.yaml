@@ -1,0 +1,125 @@
+# Argo CD Application manifests for each platform component.
+# Apply with: kubectl apply -f k8s/argocd/apps.yaml
+# Argo CD then owns syncing each component from the GitHub repo to the cluster.
+# Any manual kubectl change that drifts from the repo is auto-reverted.
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: llm-platform-base
+  namespace: argocd
+spec:
+  project: llm-platform
+  source:
+    repoURL: https://github.com/AyeniOluwatosinOlawale/llm-inference-platform.git
+    targetRevision: main
+    path: k8s/base
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: llm-serving
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: llm-platform-vllm
+  namespace: argocd
+spec:
+  project: llm-platform
+  source:
+    repoURL: https://github.com/AyeniOluwatosinOlawale/llm-inference-platform.git
+    targetRevision: main
+    path: k8s/vllm
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: llm-serving
+  syncPolicy:
+    automated:
+      prune: true
+      # selfHeal off for inference pods — avoid restarting a pod mid-request
+      # due to a temporary drift detection. Promote manually via git push.
+      selfHeal: false
+    syncOptions:
+      - RespectIgnoreDifferences=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: llm-platform-sglang
+  namespace: argocd
+spec:
+  project: llm-platform
+  source:
+    repoURL: https://github.com/AyeniOluwatosinOlawale/llm-inference-platform.git
+    targetRevision: main
+    path: k8s/sglang
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: llm-serving
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: false
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: llm-platform-litellm
+  namespace: argocd
+spec:
+  project: llm-platform
+  source:
+    repoURL: https://github.com/AyeniOluwatosinOlawale/llm-inference-platform.git
+    targetRevision: main
+    path: k8s/litellm
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: llm-gateway
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: llm-platform-monitoring
+  namespace: argocd
+spec:
+  project: llm-platform
+  source:
+    repoURL: https://github.com/AyeniOluwatosinOlawale/llm-inference-platform.git
+    targetRevision: main
+    path: k8s/monitoring
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: llm-platform-karpenter
+  namespace: argocd
+spec:
+  project: llm-platform
+  source:
+    repoURL: https://github.com/AyeniOluwatosinOlawale/llm-inference-platform.git
+    targetRevision: main
+    path: k8s/karpenter
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: karpenter
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
