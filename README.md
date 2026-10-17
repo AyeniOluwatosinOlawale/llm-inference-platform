@@ -244,7 +244,7 @@ The `|| true` is critical: if vLLM is not yet accepting requests when `postStart
 ## Infrastructure Layout
 
 ```
-provision/eks/           Terraform — VPC, KMS, EKS 1.30, CPU managed node group + Karpenter IAM/SQS
+provision/eks/           Terraform — VPC, KMS, EKS 1.30, GPU + CPU managed node groups + Karpenter IAM/SQS
 k8s/karpenter/           EC2NodeClass (AL2 GPU, 200GB NVMe) + NodePool (g5.xlarge, spot+on-demand)
 k8s/base/                Namespaces (llm-serving, llm-gateway, monitoring) + NetworkPolicies
 k8s/vllm/llama3/         Deployment, Service, ServiceMonitor, KEDA ScaledObject
