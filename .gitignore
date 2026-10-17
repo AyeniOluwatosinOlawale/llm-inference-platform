@@ -17,6 +17,9 @@ terraform.tfvars
 kubeconfig
 kubeconfig.*
 
+# Linkerd trust anchor certificates — back up CA key out-of-band (not in git)
+.linkerd-certs/
+
 # Vast.ai state
 provision/vastai/state.json
 

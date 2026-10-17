@@ -1,0 +1,32 @@
+# Kyverno — admission controller for policy enforcement.
+# Policies live in k8s/policies/ and are applied by make deploy-policies.
+# audit mode: violations are logged but not blocked — switch to Enforce after verifying
+# existing workloads pass (make verify-policies).
+
+admissionController:
+  replicas: 2
+  nodeSelector:
+    workload-type: cpu
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 384Mi
+
+backgroundController:
+  enabled: true
+  nodeSelector:
+    workload-type: cpu
+
+reportsController:
+  enabled: true
+  nodeSelector:
+    workload-type: cpu
+
+# Emit metrics for kube-prometheus-stack.
+serviceMonitor:
+  enabled: true
+  additionalLabels:
+    release: kube-prometheus-stack

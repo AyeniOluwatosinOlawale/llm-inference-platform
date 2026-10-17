@@ -1,0 +1,34 @@
+# Policy: no container may run with privileged: true or allowPrivilegeEscalation: true.
+# vLLM/SGLang GPU containers don't need host privileges — NVIDIA device plugin handles
+# the GPU device file binding transparently.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privileged-containers
+  annotations:
+    policies.kyverno.io/title: Disallow Privileged Containers
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >
+      Prevents containers from running as root with full host capabilities.
+      GPU workloads on this platform do not require privileged mode.
+spec:
+  validationFailureAction: Audit   # switch to Enforce after verifying existing pods
+  background: true
+  rules:
+    - name: no-privileged
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [llm-serving, llm-gateway, monitoring]
+      validate:
+        message: "Privileged containers are not allowed. Remove securityContext.privileged: true."
+        pattern:
+          spec:
+            containers:
+              - =(securityContext):
+                  =(privileged): "false"
+                  =(allowPrivilegeEscalation): "false"
+            initContainers:
+              - =(securityContext):
+                  =(privileged): "false"

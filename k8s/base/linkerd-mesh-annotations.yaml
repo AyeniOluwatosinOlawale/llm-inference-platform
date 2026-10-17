@@ -1,0 +1,28 @@
+# Annotate each inference namespace so Linkerd auto-injects the mTLS proxy
+# sidecar into every new pod. Existing pods need a rolling restart after this
+# is applied (handled by: make deploy-mtls).
+#
+# linkerd.io/inject: enabled  → proxy injected automatically
+# config.linkerd.io/skip-outbound-ports: 4317,4318 → skip OTel ports (avoid double-wrapping traces)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llm-serving
+  annotations:
+    linkerd.io/inject: enabled
+    config.linkerd.io/skip-outbound-ports: "4317,4318"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llm-gateway
+  annotations:
+    linkerd.io/inject: enabled
+    config.linkerd.io/skip-outbound-ports: "4317,4318"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  annotations:
+    linkerd.io/inject: enabled

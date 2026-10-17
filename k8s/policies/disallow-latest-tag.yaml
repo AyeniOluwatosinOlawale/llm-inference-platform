@@ -1,0 +1,38 @@
+# Policy: block images using the :latest tag or no tag at all.
+# Unpinned images cause silent version drift — a node reboot can pull a different
+# image than the one currently running, breaking reproducibility and rollbacks.
+# All platform images (vllm/vllm-openai, ghcr.io/sgl-project/sglang, etc.) use
+# explicit version tags — this policy enforces that for any new workloads too.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  annotations:
+    policies.kyverno.io/title: Disallow Latest Image Tag
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >
+      Requires all container images to use an explicit, immutable tag
+      (not :latest and not untagged) for reproducible deployments.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: no-latest-tag
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [llm-serving, llm-gateway, monitoring]
+      validate:
+        message: "Image '{{ element.image }}' uses :latest or has no tag. Pin to a specific version."
+        foreach:
+          - list: "request.object.spec.containers"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ element.image }}"
+                    operator: Equals
+                    value: "*:latest"
+                  - key: "{{ element.image }}"
+                    operator: NotContains
+                    value: ":"

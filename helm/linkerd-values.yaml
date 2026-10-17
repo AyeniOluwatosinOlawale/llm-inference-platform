@@ -1,0 +1,41 @@
+# Linkerd control plane — mTLS for all pod-to-pod traffic.
+# Lighter than Istio: ~200MB RAM overhead per node vs ~1GB.
+# After install, namespaces are annotated (linkerd-mesh-annotations.yaml) to
+# auto-inject the Linkerd proxy sidecar into every pod.
+#
+# Install sequence (handled by make deploy-mtls):
+#   1. linkerd-crds chart
+#   2. linkerd-control-plane chart (this file)
+#   3. kubectl annotate namespaces → sidecar injection enabled
+#   4. rolling restart all deployments to pick up the proxy
+
+controllerReplicas: 2
+
+# Run control-plane components on CPU nodes, not GPU nodes.
+nodeSelector:
+  workload-type: cpu
+
+# Identity — Linkerd issues short-lived mTLS certificates (24h) via its
+# built-in CA. No external cert infrastructure required for mTLS.
+identity:
+  issuer:
+    scheme: kubernetes.io/tls   # cert-manager issues the trust anchor
+
+proxyInjector:
+  namespaceSelector:
+    matchExpressions:
+      - key: linkerd.io/inject
+        operator: In
+        values: ["enabled"]
+
+# Prometheus scraping is handled by the kube-prometheus-stack ServiceMonitor.
+prometheusUrl: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+
+proxy:
+  resources:
+    cpu:
+      request: 10m
+      limit: 100m
+    memory:
+      request: 20Mi
+      limit: 64Mi

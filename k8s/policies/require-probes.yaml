@@ -1,0 +1,35 @@
+# Policy: all containers in llm-serving must define a readinessProbe.
+# A pod without a readinessProbe is added to the Service endpoints immediately
+# after start — before the model is loaded — causing errors during cold start.
+# vLLM/SGLang pods already have startupProbe + readinessProbe; this policy
+# prevents future workloads from accidentally omitting them.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-readiness-probe
+  annotations:
+    policies.kyverno.io/title: Require Readiness Probe
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >
+      Inference containers must declare a readinessProbe so they are only
+      added to Service endpoints after the model finishes loading.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-readiness-probe
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [llm-serving]
+      validate:
+        message: "Container '{{ element.name }}' in llm-serving is missing a readinessProbe. Add one to prevent traffic before the model is ready."
+        foreach:
+          - list: "request.object.spec.containers"
+            deny:
+              conditions:
+                all:
+                  - key: "{{ element.readinessProbe }}"
+                    operator: Equals
+                    value: null

@@ -1,0 +1,32 @@
+# Policy: every container in inference/gateway/monitoring namespaces must declare
+# CPU and memory limits. Prevents a runaway pod from starving other workloads on the node.
+# GPU limits are already set on vLLM/SGLang pods — this catches any new pods that forget.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+  annotations:
+    policies.kyverno.io/title: Require Resource Limits
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >
+      All containers must specify CPU and memory limits to prevent
+      noisy-neighbor resource starvation on GPU nodes.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-container-limits
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [llm-serving, llm-gateway, monitoring]
+      validate:
+        message: "Container '{{ request.object.metadata.name }}' is missing resource limits. Add resources.limits.cpu and resources.limits.memory."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"

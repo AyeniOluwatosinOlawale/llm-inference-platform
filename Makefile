@@ -4,9 +4,9 @@
 
 .PHONY: help secrets up-eks up-runpod up-vastai \
         deploy-base deploy-karpenter deploy-infra deploy-tracing deploy-argocd deploy-waf \
-        deploy-rollouts deploy-velero verify-metrics \
+        deploy-rollouts deploy-mtls deploy-eso deploy-policies deploy-velero verify-metrics \
         deploy-vllm deploy-sglang deploy-litellm deploy-dashboards deploy-vllm-70b \
-        health-check load-test \
+        health-check load-test verify-policies dr-test \
         benchmark-lab benchmark-prod benchmark-compare \
         canary promote rollback sync \
         redeploy-vllm redeploy-sglang teardown
@@ -44,10 +44,12 @@ help:
 	@echo "    make deploy-dashboards Grafana dashboards"
 	@echo ""
 	@echo "  Operations"
-	@echo "    make health-check   End-to-end platform check"
-	@echo "    make load-test      TTFT/TPOT/stress load test"
-	@echo "    make redeploy-vllm  Rolling restart vLLM pods"
-	@echo "    make redeploy-sglang Rolling restart SGLang pods"
+	@echo "    make health-check     End-to-end platform check"
+	@echo "    make load-test        TTFT/TPOT/stress load test"
+	@echo "    make verify-policies  Audit Kyverno policy violations"
+	@echo "    make dr-test          DR precondition drill (snapshots, ESO, Argo CD)"
+	@echo "    make redeploy-vllm    Rolling restart vLLM pods"
+	@echo "    make redeploy-sglang  Rolling restart SGLang pods"
 	@echo ""
 	@echo "  Benchmarks (lab2 integration)"
 	@echo "    make benchmark-prod  Run lab2 scenarios against live platform"
@@ -250,6 +252,96 @@ sync:
 	@echo "==> Triggering Argo CD sync for all apps..."
 	argocd app sync --selector app.kubernetes.io/part-of=llm-platform 2>/dev/null || \
 		kubectl annotate applications -n argocd --all argocd.argoproj.io/refresh=hard
+
+# ── mTLS (Linkerd) ─────────────────────────────────────────────────────────────
+# Mutual TLS for all pod-to-pod traffic in llm-serving, llm-gateway, monitoring.
+# Run after deploy-infra. Linkerd is ~200MB RAM/node vs Istio's ~1GB.
+deploy-mtls:
+	@echo "==> Installing Linkerd CRDs..."
+	helm repo add linkerd https://helm.linkerd.io/stable
+	helm repo update
+	helm upgrade --install linkerd-crds linkerd/linkerd-crds \
+		--namespace linkerd --create-namespace
+	@echo "==> Generating Linkerd trust anchor certificate..."
+	@if ! command -v step &>/dev/null; then \
+		echo "  'step' CLI not found. Install: brew install step"; exit 1; fi
+	@mkdir -p .linkerd-certs
+	step certificate create root.linkerd.cluster.local .linkerd-certs/ca.crt .linkerd-certs/ca.key \
+		--profile root-ca --no-password --insecure 2>/dev/null || true
+	step certificate create identity.linkerd.cluster.local \
+		.linkerd-certs/issuer.crt .linkerd-certs/issuer.key \
+		--profile intermediate-ca --not-after 8760h \
+		--ca .linkerd-certs/ca.crt --ca-key .linkerd-certs/ca.key \
+		--no-password --insecure 2>/dev/null || true
+	@echo "==> Installing Linkerd control plane..."
+	helm upgrade --install linkerd-control-plane linkerd/linkerd-control-plane \
+		--namespace linkerd \
+		--values helm/linkerd-values.yaml \
+		--set-file identityTrustAnchorsPEM=.linkerd-certs/ca.crt \
+		--set-file identity.issuer.tls.crtPEM=.linkerd-certs/issuer.crt \
+		--set-file identity.issuer.tls.keyPEM=.linkerd-certs/issuer.key
+	kubectl rollout status deployment/linkerd-destination -n linkerd --timeout=120s
+	@echo "==> Annotating namespaces for proxy injection..."
+	kubectl apply -f k8s/base/linkerd-mesh-annotations.yaml
+	@echo "==> Rolling restart to inject mTLS proxies into existing pods..."
+	kubectl rollout restart deployment -n llm-serving
+	kubectl rollout restart deployment -n llm-gateway
+	kubectl rollout restart deployment -n monitoring
+	@echo "==> mTLS active. Verify: linkerd check && linkerd viz stat deploy -n llm-serving"
+	@echo "    Note: .linkerd-certs/ is gitignored — back up CA key securely."
+
+# ── External Secrets Operator ──────────────────────────────────────────────────
+# Syncs AWS Secrets Manager → K8s Secrets automatically every 1 hour.
+# Run after terraform apply (needs ESO IRSA role ARN from terraform output).
+deploy-eso:
+	@echo "==> Reading ESO config from Terraform outputs..."
+	$(eval ESO_ROLE_ARN := $(shell cd provision/eks && terraform output -raw eso_role_arn 2>/dev/null))
+	$(eval AWS_REGION   := $(shell cd provision/eks && terraform output -raw aws_region 2>/dev/null || echo us-east-1))
+	@echo "==> Installing External Secrets Operator..."
+	helm repo add external-secrets https://charts.external-secrets.io
+	helm repo update
+	helm upgrade --install external-secrets external-secrets/external-secrets \
+		--namespace external-secrets --create-namespace \
+		--values helm/external-secrets-values.yaml \
+		--set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=$(ESO_ROLE_ARN)"
+	kubectl rollout status deployment/external-secrets -n external-secrets --timeout=120s
+	@echo "==> Applying ClusterSecretStore and ExternalSecrets..."
+	sed "s|\$${AWS_REGION}|$(AWS_REGION)|g" \
+		k8s/base/external-secrets/cluster-secret-store.yaml | kubectl apply -f -
+	sed -e "s|\$${CLUSTER_NAME}|$(CLUSTER_NAME)|g" \
+		k8s/base/external-secrets/external-secrets.yaml | kubectl apply -f -
+	@echo "==> ESO ready. Secrets sync within 1 hour. Force sync:"
+	@echo "    kubectl annotate externalsecret platform-secrets -n llm-serving force-sync=\$$(date +%s) --overwrite"
+
+# ── Kyverno Admission Policies ─────────────────────────────────────────────────
+# Admission controller: enforces image pinning, resource limits, no privileged
+# containers, and readiness probes. Starts in Audit mode (logs violations, no blocks).
+# After verifying zero violations: make verify-policies → switch to Enforce.
+deploy-policies:
+	@echo "==> Installing Kyverno..."
+	helm repo add kyverno https://kyverno.github.io/kyverno
+	helm repo update
+	helm upgrade --install kyverno kyverno/kyverno \
+		--namespace kyverno --create-namespace \
+		--values helm/kyverno-values.yaml
+	kubectl rollout status deployment/kyverno-admission-controller -n kyverno --timeout=120s
+	@echo "==> Applying ClusterPolicies (Audit mode)..."
+	kubectl apply -f k8s/policies/
+	@echo "==> Kyverno ready. Check violations:"
+	@echo "    kubectl get policyreport -A"
+	@echo "    kubectl describe clusterpolicyreport"
+
+verify-policies:
+	@echo "==> Kyverno policy violation report..."
+	kubectl get policyreport -A -o wide
+	@echo ""
+	@echo "If violations = 0, switch policies to Enforce mode:"
+	@echo "  kubectl get clusterpolicy -o name | xargs -I{} kubectl patch {} --type=merge \\"
+	@echo "    -p '{\"spec\":{\"validationFailureAction\":\"Enforce\"}}'"
+
+# ── DR Test ────────────────────────────────────────────────────────────────────
+dr-test:
+	@bash scripts/dr-test.sh --dry-run
 
 # ── Argo Rollouts ──────────────────────────────────────────────────────────────
 # Progressive delivery for vLLM pods: 10% canary → Prometheus analysis → 50% → 100%.
