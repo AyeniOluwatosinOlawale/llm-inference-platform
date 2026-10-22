@@ -210,15 +210,9 @@
   <button class="new-chat-btn" onclick="newChat()">+ New Chat</button>
 
   <div class="sidebar-section">
-    <h3>API Key</h3>
-    <label>Your API Key</label>
-    <input type="password" id="api-key" placeholder="sk-..." oninput="saveSettings()">
-  </div>
-
-  <div class="sidebar-section">
-    <h3>Integrations</h3>
+    <h3>Connect your apps</h3>
     <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
-      Connect your services so AnaModel can act on your behalf.
+      Connect your apps and I'll take actions on your behalf — create issues, send messages, query your database, and more.
     </p>
 
     <!-- GitHub -->
@@ -343,17 +337,17 @@
 
   <div id="messages">
     <div id="welcome">
-      <h1>AnaModel Agent</h1>
-      <p>Chat naturally — I'll search the web, check your connected services, and take real actions to achieve your goal.</p>
+      <h1>How can I help you today?</h1>
+      <p>Ask me anything. I can search the web, check live data, and take actions in your connected apps.</p>
       <div class="example-prompts">
-        <div class="example-prompt" onclick="sendPrompt(this)">🌤️ What's the weather in Lagos today?</div>
-        <div class="example-prompt" onclick="sendPrompt(this)">📰 Latest news in Nigeria</div>
-        <div class="example-prompt" onclick="sendPrompt(this)">📋 List my GitHub repositories</div>
-        <div class="example-prompt" onclick="sendPrompt(this)">💰 What's the Bitcoin price right now?</div>
-        <div class="example-prompt" onclick="sendPrompt(this)">🐛 Create a GitHub issue: Login button not working on mobile</div>
-        <div class="example-prompt" onclick="sendPrompt(this)">💳 Show my Stripe balance</div>
-        <div class="example-prompt" onclick="sendPrompt(this)">🗃️ Query my Supabase users table</div>
-        <div class="example-prompt" onclick="sendPrompt(this)">💬 Send a message to #general on Slack: Deployment complete ✅</div>
+        <div class="example-prompt" onclick="sendPrompt(this)">What's the weather in Lagos right now?</div>
+        <div class="example-prompt" onclick="sendPrompt(this)">What's happening in Nigeria today?</div>
+        <div class="example-prompt" onclick="sendPrompt(this)">What is the Bitcoin price?</div>
+        <div class="example-prompt" onclick="sendPrompt(this)">Summarise the latest tech news</div>
+        <div class="example-prompt" onclick="sendPrompt(this)">List my GitHub repos and open issues</div>
+        <div class="example-prompt" onclick="sendPrompt(this)">Show my Stripe balance and last 5 payments</div>
+        <div class="example-prompt" onclick="sendPrompt(this)">Send a Slack message to #general: Server is back online ✅</div>
+        <div class="example-prompt" onclick="sendPrompt(this)">Create a Linear issue: Payment page crashes on Safari</div>
       </div>
     </div>
   </div>
@@ -375,19 +369,12 @@
 
 <script>
 const API_BASE = window.location.origin.replace('/chat', '');
+const API_KEY = 'sk-b0454325deddc837764f88240c8f7986';
 let messages = [];
 let integrations = {};
 let isStreaming = false;
 
-// ── Persistence ──────────────────────────────────────────────────────────────
-
-function saveSettings() {
-  localStorage.setItem('anamodel_api_key', document.getElementById('api-key').value);
-}
-
 function loadSettings() {
-  const key = localStorage.getItem('anamodel_api_key') || '';
-  document.getElementById('api-key').value = key;
   const saved = JSON.parse(localStorage.getItem('anamodel_integrations') || '{}');
   integrations = saved;
   restoreIntegrationFields();
@@ -550,12 +537,6 @@ async function sendMessage() {
   const text = input.value.trim();
   if (!text) return;
 
-  const apiKey = document.getElementById('api-key').value.trim();
-  if (!apiKey) {
-    alert('Please enter your API key in the sidebar first.');
-    return;
-  }
-
   // Hide welcome
   const welcome = document.getElementById('welcome');
   if (welcome.style.display !== 'none') welcome.style.display = 'none';
@@ -585,7 +566,7 @@ async function sendMessage() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${API_KEY}`,
       },
       body: JSON.stringify({
         model: 'AnaModel',
