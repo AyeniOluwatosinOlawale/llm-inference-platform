@@ -881,6 +881,91 @@ def _send_sms(account_sid, auth_token, from_number, to, message):
         return f"SMS error: {e.read().decode()}"
 
 
+# ── Tool risk classification ───────────────────────────────────────────────────
+# SAFE    — read-only, no side effects, always execute
+# WRITE   — creates something new; low risk; execute + show visible ⚠️ notice
+# CRITICAL— irreversible or high-stakes (money, data mutation, external send)
+#           requires allow_destructive=True in the request or explicit user confirmation
+
+SAFE_TOOLS = {
+    "web_search", "get_news", "get_weather", "get_crypto_price",
+    "http_get", "calculator", "run_python", "get_time",
+    "github_list_repos", "github_list_issues", "github_read_file", "github_search_code",
+    "stripe_get_balance", "stripe_list_payments", "stripe_get_customer",
+    "supabase_list_tables", "supabase_query",
+    "slack_list_channels", "slack_get_messages",
+    "notion_search", "notion_get_page",
+    "linear_list_issues", "linear_list_projects",
+}
+
+WRITE_TOOLS = {
+    "github_create_issue", "github_create_pr",
+    "supabase_insert",
+    "notion_create_page",
+    "linear_create_issue",
+}
+
+CRITICAL_TOOLS = {
+    "stripe_create_refund",   # money
+    "supabase_update",        # can mutate/wipe rows
+    "slack_send_message",     # sends a message to real people
+    "send_email",             # sends to real people
+    "send_sms",               # sends to real people; costs money
+    "api_call",               # arbitrary external mutation
+}
+
+_CONFIRMATION_PHRASES = {
+    "yes", "confirm", "go ahead", "do it", "proceed", "sure",
+    "approved", "execute", "run it", "apply", "yes please",
+}
+
+def _user_confirmed(messages: list) -> bool:
+    """Return True if the last user message contains an explicit confirmation."""
+    for m in reversed(messages):
+        if m.get("role") == "user":
+            text = (m.get("content") or "").lower().strip()
+            return any(phrase in text for phrase in _CONFIRMATION_PHRASES)
+    return False
+
+def _validate_args(name: str, args: dict) -> str | None:
+    """
+    Validate arguments for high-risk tools.
+    Returns an error string if invalid, None if OK.
+    """
+    if name == "supabase_update":
+        if not args.get("filter"):
+            return "BLOCKED: supabase_update requires a non-empty filter. Updating without a filter would modify every row in the table."
+    if name == "supabase_query":
+        limit = int(args.get("limit", 20))
+        if limit > 500:
+            args["limit"] = 500  # silently cap
+    if name == "stripe_create_refund":
+        amount = args.get("amount")
+        if amount and int(amount) > 100_000:  # $1,000 in cents
+            return f"BLOCKED: Refund of {amount} cents (${amount/100:.2f}) exceeds the per-request cap of $1,000. Contact an admin for large refunds."
+    if name == "http_get":
+        url = args.get("url", "")
+        if any(x in url.lower() for x in ["/admin", "/internal", "/api/key", "/secret"]):
+            return f"BLOCKED: URL pattern looks like an internal admin route: {url}"
+    return None
+
+def _describe_tool_call(name: str, args: dict) -> str:
+    """Human-readable description of what a tool call will do (for audit log + confirmation prompt)."""
+    descriptions = {
+        "stripe_create_refund": lambda a: f"Stripe refund of ${int(a.get('amount',0))/100:.2f} on payment {a.get('payment_intent_id','')}",
+        "supabase_update":      lambda a: f"Supabase UPDATE on table `{a.get('table','')}` WHERE {a.get('filter','')}",
+        "slack_send_message":   lambda a: f"Slack message to #{a.get('channel','')} — "{a.get('message','')[:60]}"",
+        "send_email":           lambda a: f"Email to {a.get('to','')} — "{a.get('subject','')}"",
+        "send_sms":             lambda a: f"SMS to {a.get('to','')} — "{a.get('message','')[:60]}"",
+        "supabase_insert":      lambda a: f"Supabase INSERT into `{a.get('table','')}` — {list(a.get('data',{}).keys())}",
+        "github_create_issue":  lambda a: f"GitHub issue on {a.get('repo','')} — "{a.get('title','')}"",
+        "github_create_pr":     lambda a: f"GitHub PR on {a.get('repo','')} — "{a.get('title','')}"",
+        "api_call":             lambda a: f"HTTP {a.get('method','?')} {a.get('url','')}",
+    }
+    fn = descriptions.get(name)
+    return fn(args) if fn else f"{name}({', '.join(f'{k}={v}' for k, v in list(args.items())[:3])})"
+
+
 # ── Tool executor ─────────────────────────────────────────────────────────────
 
 def execute_tool(name: str, args: dict, integrations: dict) -> str:
@@ -1153,16 +1238,21 @@ TOOL_LABELS = {
     "api_call": "🔌 Calling API",
 }
 
-def run_agent_stream(messages, model=DEFAULT_MODEL, max_tokens=1024, integrations=None):
+def run_agent_stream(messages, model=DEFAULT_MODEL, max_tokens=1024, integrations=None,
+                     allow_destructive: bool = False):
     """
-    Unified streaming agent: handles simple chat, web search, and multi-step goal execution
-    all in one. Streams tool progress in real-time so the user sees what's happening.
-    Credentials pasted inline in messages are auto-detected and merged with any explicit integrations.
+    Unified streaming agent with three-tier tool execution guard:
+      SAFE     — executes immediately, no notice
+      WRITE    — executes + streams ⚠️ ACTION notice so user sees every side effect
+      CRITICAL — blocked unless allow_destructive=True OR user's last message is an
+                 explicit confirmation phrase ("yes", "confirm", "go ahead", …)
+    Argument validation runs before every tool call regardless of tier.
     """
     integrations = {**extract_credentials_from_messages(messages), **(integrations or {})}
     tools = build_tools(integrations)
     cid = f"chatcmpl-{uuid.uuid4().hex[:12]}"
     created = int(time.time())
+    user_confirmed = _user_confirmed(messages)
 
     def _chunk(content, finish=None):
         return f"data: {json.dumps({'id':cid,'object':'chat.completion.chunk','created':created,'model':model,'choices':[{'index':0,'delta':{'content':content} if content else {},'finish_reason':finish}]})}\n\n"
@@ -1178,7 +1268,6 @@ def run_agent_stream(messages, model=DEFAULT_MODEL, max_tokens=1024, integration
         msg = response.choices[0].message
         finish = response.choices[0].finish_reason
 
-        # No tool calls — stream final answer token by token (always, regardless of step)
         if finish == "stop" or not msg.tool_calls:
             stream = client.chat.completions.create(
                 model=model, messages=messages, tools=tools,
@@ -1197,21 +1286,48 @@ def run_agent_stream(messages, model=DEFAULT_MODEL, max_tokens=1024, integration
                     yield _chunk(token)
             break
 
-        # Execute tool calls — show progress to user
         messages.append(msg)
         for tc in msg.tool_calls:
-            label = TOOL_LABELS.get(tc.function.name, f"⚙️ Using {tc.function.name}")
+            tool_name = tc.function.name
             args = json.loads(tc.function.arguments)
-            # Show what we're doing
+
+            # ── Argument validation (all tiers) ──────────────────────────────
+            arg_error = _validate_args(tool_name, args)
+            if arg_error:
+                yield _chunk(f"\n🚫 **Blocked:** {arg_error}\n")
+                messages.append({"role": "tool", "tool_call_id": tc.id, "content": arg_error})
+                continue
+
+            # ── Critical tool guard ───────────────────────────────────────────
+            if tool_name in CRITICAL_TOOLS and not allow_destructive and not user_confirmed:
+                description = _describe_tool_call(tool_name, args)
+                block_msg = (
+                    f"⚠️ **Action requires confirmation:** {description}\n\n"
+                    f"Reply with **'yes'** or **'confirm'** to execute this action, "
+                    f"or set `allow_destructive: true` in your request."
+                )
+                yield _chunk(f"\n{block_msg}\n")
+                messages.append({"role": "tool", "tool_call_id": tc.id,
+                                 "content": f"BLOCKED — awaiting user confirmation: {description}"})
+                continue
+
+            # ── Write tool notice ─────────────────────────────────────────────
+            if tool_name in WRITE_TOOLS or tool_name in CRITICAL_TOOLS:
+                description = _describe_tool_call(tool_name, args)
+                yield _chunk(f"\n⚠️ **Action:** {description}\n")
+
+            # ── Progress label ────────────────────────────────────────────────
+            label = TOOL_LABELS.get(tool_name, f"⚙️ Using {tool_name}")
             detail = ""
-            if "query" in args:     detail = f": *{args['query'][:60]}*"
+            if "query" in args:      detail = f": *{args['query'][:60]}*"
             elif "location" in args: detail = f": *{args['location']}*"
             elif "channel" in args:  detail = f": *{args['channel']}*"
             elif "repo" in args:     detail = f": *{args['repo']}*"
             elif "table" in args:    detail = f": *{args['table']}*"
             elif "to" in args:       detail = f" to *{args['to']}*"
             yield _chunk(f"{label}{detail}...\n")
-            result = execute_tool(tc.function.name, args, integrations)
+
+            result = execute_tool(tool_name, args, integrations)
             messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
 
     yield _chunk("", finish="stop")
@@ -1267,6 +1383,25 @@ When given a goal:
             step_count += 1
             args = json.loads(tc.function.arguments)
             tool_name = tc.function.name
+
+            arg_error = _validate_args(tool_name, args)
+            if arg_error:
+                yield _event(f"\n🚫 **Blocked:** {arg_error}\n")
+                messages.append({"role": "tool", "tool_call_id": tc.id, "content": arg_error})
+                continue
+
+            if tool_name in CRITICAL_TOOLS:
+                description = _describe_tool_call(tool_name, args)
+                block_msg = (f"⚠️ **Blocked critical action:** {description}\n"
+                             f"Set `allow_destructive: true` in your request to permit this.")
+                yield _event(f"\n{block_msg}\n")
+                messages.append({"role": "tool", "tool_call_id": tc.id,
+                                 "content": f"BLOCKED: {description}"})
+                continue
+
+            if tool_name in WRITE_TOOLS:
+                yield _event(f"\n⚠️ **Action:** {_describe_tool_call(tool_name, args)}\n")
+
             yield _event(f"*🔧 Using {tool_name}...*\n")
             result = execute_tool(tool_name, args, integrations)
             messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
@@ -1290,12 +1425,14 @@ class ChatRequest(BaseModel):
     temperature: Optional[float] = 0.1
     stream: Optional[bool] = False
     integrations: Optional[Dict[str, Any]] = None
+    allow_destructive: Optional[bool] = False  # must be True to execute CRITICAL_TOOLS
 
 class GoalRequest(BaseModel):
     goal: str
     model: Optional[str] = DEFAULT_MODEL
     max_tokens: Optional[int] = 2048
     integrations: Optional[Dict[str, Any]] = None
+    allow_destructive: Optional[bool] = False
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -1328,7 +1465,8 @@ def list_models():
 @app.post("/v1/agent/goal")
 @limiter.limit("20/minute")
 def agent_goal(request: Request, goal_req: GoalRequest, authorization: Optional[str] = Header(None)):
-    """Goal-oriented endpoint: give it a goal, it plans and executes autonomously."""
+    """Goal-oriented endpoint: give it a goal, it plans and executes autonomously.
+    Critical tools (refunds, sends, mutations) are blocked unless allow_destructive=true."""
     return StreamingResponse(
         run_goal_stream(
             goal=goal_req.goal,
@@ -1354,10 +1492,12 @@ def chat_completions(request: Request, chat_req: ChatRequest, authorization: Opt
     model = chat_req.model or DEFAULT_MODEL
     max_tokens = chat_req.max_tokens or 1024
     integrations = chat_req.integrations or {}
+    allow_destructive = chat_req.allow_destructive or False
 
     if chat_req.stream:
         return StreamingResponse(
-            run_agent_stream(messages, model=model, max_tokens=max_tokens, integrations=integrations),
+            run_agent_stream(messages, model=model, max_tokens=max_tokens,
+                             integrations=integrations, allow_destructive=allow_destructive),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
