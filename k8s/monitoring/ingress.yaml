@@ -1,0 +1,57 @@
+# Public ingress for Grafana and Prometheus via Traefik.
+# Protected by BasicAuth — credentials stored in monitoring-basic-auth secret.
+# Username: admin  Password: set via MONITORING_PASSWORD GitHub secret
+#
+# Generate a new hash:  openssl passwd -apr1 <password>
+# Update secret:  kubectl create secret generic monitoring-basic-auth \
+#   --from-literal=users="admin:<hash>" -n monitoring --dry-run=client -o yaml | kubectl apply -f -
+
+---
+# BasicAuth middleware shared by both Grafana and Prometheus
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: monitoring-auth
+  namespace: monitoring
+spec:
+  basicAuth:
+    secret: monitoring-basic-auth
+    realm: "AnaModel Monitoring"
+
+---
+# Grafana — grafana.136.65.123.94.nip.io
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: grafana-ingressroute
+  namespace: monitoring
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`grafana.136.65.123.94.nip.io`)
+      kind: Rule
+      middlewares:
+        - name: monitoring-auth
+      services:
+        - name: kube-prometheus-stack-grafana
+          port: 80
+
+---
+# Prometheus — prometheus.136.65.123.94.nip.io
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: prometheus-ingressroute
+  namespace: monitoring
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`prometheus.136.65.123.94.nip.io`)
+      kind: Rule
+      middlewares:
+        - name: monitoring-auth
+      services:
+        - name: kube-prometheus-stack-prometheus
+          port: 9090

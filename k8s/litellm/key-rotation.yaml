@@ -1,0 +1,79 @@
+# API key rotation: daily job that lists keys expiring within 3 days
+# and logs them. Add a notification step (Slack/email) as needed.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: api-key-rotation-check
+  namespace: llm-gateway
+spec:
+  schedule: "0 9 * * *"    # 9am UTC daily
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: key-checker
+              image: python:3.11-alpine
+              command:
+                - sh
+                - -c
+                - |
+                  pip install requests -q
+                  python3 - <<'PYEOF'
+                  import requests, os, json
+                  from datetime import datetime, timezone, timedelta
+
+                  url     = os.environ["LITELLM_URL"]
+                  key     = os.environ["LITELLM_MASTER_KEY"]
+                  headers = {"Authorization": f"Bearer {key}"}
+
+                  try:
+                      r = requests.get(f"{url}/v2/key/list", headers=headers, timeout=15)
+                      r.raise_for_status()
+                      keys = r.json().get("keys", [])
+                  except Exception as e:
+                      print(f"ERROR fetching keys: {e}")
+                      raise
+
+                  now     = datetime.now(timezone.utc)
+                  warning = now + timedelta(days=3)
+                  expiring = []
+
+                  for k in keys:
+                      expires = k.get("expires")
+                      if not expires:
+                          continue
+                      exp_dt = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+                      if exp_dt <= warning:
+                          expiring.append({
+                              "key":     k.get("token", "")[:12] + "...",
+                              "user":    k.get("user_id"),
+                              "expires": expires,
+                              "spend":   k.get("spend", 0),
+                          })
+
+                  if expiring:
+                      print(f"WARN: {len(expiring)} key(s) expiring within 3 days:")
+                      for e in expiring:
+                          print(f"  user={e['user']} key={e['key']} expires={e['expires']} spend=${e['spend']:.4f}")
+                  else:
+                      print(f"OK: {len(keys)} keys checked — none expiring within 3 days.")
+                  PYEOF
+              env:
+                - name: LITELLM_URL
+                  value: "http://litellm-proxy-service.llm-gateway.svc.cluster.local"
+                - name: LITELLM_MASTER_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: litellm-secrets
+                      key: LITELLM_MASTER_KEY
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 200m
+                  memory: 128Mi

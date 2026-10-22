@@ -78,11 +78,32 @@ jobs:
           kubectl apply -f k8s/base/namespaces.yaml
           kubectl apply -f k8s/base/network-policies/ 2>/dev/null || true
 
+      - name: Create / refresh litellm-secrets
+        if: contains(steps.changes.outputs.component, 'litellm') || steps.changes.outputs.component == 'all'
+        run: |
+          kubectl create secret generic litellm-secrets \
+            --from-literal=LITELLM_MASTER_KEY="${{ secrets.LITELLM_MASTER_KEY }}" \
+            --from-literal=REDIS_PASSWORD="${{ secrets.REDIS_PASSWORD }}" \
+            --from-literal=POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}" \
+            --from-literal=DATABASE_URL="postgresql://litellm:${{ secrets.POSTGRES_PASSWORD }}@postgres-service:5432/litellm" \
+            --namespace llm-gateway \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create / refresh monitoring-basic-auth secret
+        if: contains(steps.changes.outputs.component, 'monitoring') || steps.changes.outputs.component == 'all'
+        run: |
+          kubectl create secret generic monitoring-basic-auth \
+            --from-literal=users="admin:${{ secrets.MONITORING_PASSWORD_HASH }}" \
+            --namespace monitoring \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy LiteLLM config + proxy
         if: contains(steps.changes.outputs.component, 'litellm') || steps.changes.outputs.component == 'all'
         run: |
           kubectl apply -f k8s/litellm/redis.yaml
           kubectl apply -f k8s/litellm/postgres.yaml
+          kubectl apply -f k8s/litellm/postgres-backup.yaml
+          kubectl apply -f k8s/litellm/key-rotation.yaml
           kubectl apply -f k8s/litellm/callbacks.yaml
           kubectl apply -f k8s/litellm/config.yaml
           kubectl apply -f k8s/litellm/deployment.yaml
@@ -108,6 +129,7 @@ jobs:
         run: |
           kubectl apply -f k8s/monitoring/prometheus-rules.yaml
           kubectl apply -f k8s/monitoring/alertmanager-config.yaml
+          kubectl apply -f k8s/monitoring/ingress.yaml
           kubectl apply -f k8s/monitoring/dashboards/ 2>/dev/null || true
 
       - name: Deploy vLLM
@@ -119,6 +141,8 @@ jobs:
             ! -name 'analysis-template.yaml' \
             | xargs -I{} kubectl apply -f {}
           kubectl rollout status deployment -n llm-serving -l engine=vllm --timeout=600s || true
+          # Verify KEDA metric labels match actual model_name emitted by vLLM
+          bash scripts/verify-metrics.sh || true
 
       - name: Deploy SGLang
         if: contains(steps.changes.outputs.component, 'sglang') || steps.changes.outputs.component == 'all'
