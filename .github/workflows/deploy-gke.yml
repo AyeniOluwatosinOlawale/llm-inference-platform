@@ -43,23 +43,33 @@ jobs:
           location: ${{ env.GKE_REGION }}
           project_id: ${{ env.GCP_PROJECT }}
 
+      - name: Fetch full git history for diff
+        run: git fetch --unshallow 2>/dev/null || git fetch --depth=2 origin main
+
       - name: Detect changed components
         id: changes
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "component=${{ github.event.inputs.component }}" >> $GITHUB_OUTPUT
           else
-            CHANGED=$(git diff --name-only HEAD~1 HEAD)
-            echo "Changed files: $CHANGED"
-            COMP="none"
-            echo "$CHANGED" | grep -q "^k8s/base/"        && COMP="base"
-            echo "$CHANGED" | grep -q "^k8s/litellm/"     && COMP="${COMP},litellm"
-            echo "$CHANGED" | grep -q "^k8s/agent-server/" && COMP="${COMP},agent"
-            echo "$CHANGED" | grep -q "^examples/agent_server.py" && COMP="${COMP},agent"
-            echo "$CHANGED" | grep -q "^k8s/monitoring/"  && COMP="${COMP},monitoring"
-            echo "$CHANGED" | grep -q "^k8s/vllm/"        && COMP="${COMP},vllm"
-            echo "$CHANGED" | grep -q "^k8s/sglang/"      && COMP="${COMP},sglang"
-            echo "component=${COMP#none,}" >> $GITHUB_OUTPUT
+            BEFORE="${{ github.event.before }}"
+            if [[ -z "$BEFORE" || "$BEFORE" == "0000000000000000000000000000000000000000" ]]; then
+              echo "First push or no before SHA — deploying all"
+              echo "component=all" >> $GITHUB_OUTPUT
+            else
+              CHANGED=$(git diff --name-only "$BEFORE" HEAD 2>/dev/null || git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+              echo "Changed files: $CHANGED"
+              COMP="none"
+              echo "$CHANGED" | grep -q "^k8s/base/"             && COMP="base"
+              echo "$CHANGED" | grep -q "^k8s/litellm/"          && COMP="${COMP},litellm"
+              echo "$CHANGED" | grep -q "^k8s/agent-server/"     && COMP="${COMP},agent"
+              echo "$CHANGED" | grep -q "^examples/agent_server.py" && COMP="${COMP},agent"
+              echo "$CHANGED" | grep -q "^k8s/monitoring/"       && COMP="${COMP},monitoring"
+              echo "$CHANGED" | grep -q "^k8s/vllm/"             && COMP="${COMP},vllm"
+              echo "$CHANGED" | grep -q "^k8s/sglang/"           && COMP="${COMP},sglang"
+              [[ "$COMP" == "none" ]] && COMP="all"
+              echo "component=${COMP#none,}" >> $GITHUB_OUTPUT
+            fi
           fi
 
       - name: Deploy base (namespaces + network policies)
