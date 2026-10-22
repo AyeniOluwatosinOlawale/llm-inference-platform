@@ -11,6 +11,9 @@ terraform.tfvars
 .env
 .env.*
 .env.secrets
+.secrets.env
+*.secrets.env
+secrets.env
 *.key
 *.pem
 *.p12

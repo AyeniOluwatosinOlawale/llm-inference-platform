@@ -41,8 +41,8 @@ from openai import OpenAI
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-LITELLM_BASE_URL = "http://136.65.123.94/v1"
-LITELLM_API_KEY  = "sk-b0454325deddc837764f88240c8f7986"
+LITELLM_BASE_URL = os.environ.get("LITELLM_BASE_URL", "http://136.65.123.94/v1")
+LITELLM_API_KEY  = os.environ["LITELLM_API_KEY"]
 DEFAULT_MODEL    = "AnaModel"
 MAX_STEPS        = 15
 TAVILY_API_KEY   = os.environ.get("TAVILY_API_KEY", "")
@@ -888,6 +888,21 @@ def execute_tool(name: str, args: dict, integrations: dict) -> str:
         return _get_crypto_price(args.get("coins", "bitcoin,ethereum"))
     if name == "http_get":
         try:
+            import ipaddress
+            parsed = urllib.parse.urlparse(args["url"])
+            if parsed.scheme not in ("http", "https"):
+                return "Error: only http/https URLs are allowed"
+            host = parsed.hostname or ""
+            blocked = ["localhost", "127.0.0.1", "0.0.0.0", "::1",
+                       "169.254.169.254", "metadata.google.internal"]
+            if host in blocked:
+                return "Error: access to internal/metadata URLs is not allowed"
+            try:
+                addr = ipaddress.ip_address(host)
+                if addr.is_private or addr.is_loopback or addr.is_link_local:
+                    return "Error: access to private IP ranges is not allowed"
+            except ValueError:
+                pass  # hostname, not raw IP — allow
             req = urllib.request.Request(args["url"], headers={"User-Agent": "Mozilla/5.0 (compatible; AnaModel/1.0)"})
             with urllib.request.urlopen(req, timeout=15) as r:
                 raw = r.read().decode("utf-8", errors="replace")
@@ -905,8 +920,20 @@ def execute_tool(name: str, args: dict, integrations: dict) -> str:
     if name == "run_python":
         buf = io.StringIO()
         try:
+            safe_globals = {
+                "__builtins__": {
+                    "abs": abs, "all": all, "any": any, "bool": bool,
+                    "dict": dict, "enumerate": enumerate, "filter": filter,
+                    "float": float, "int": int, "len": len, "list": list,
+                    "map": map, "max": max, "min": min, "print": print,
+                    "range": range, "round": round, "set": set, "sorted": sorted,
+                    "str": str, "sum": sum, "tuple": tuple, "type": type, "zip": zip,
+                },
+                "math": math,
+                "json": json,
+            }
             with contextlib.redirect_stdout(buf):
-                exec(args["code"], {"__builtins__": __builtins__, "math": math, "json": json})
+                exec(args["code"], safe_globals)
             return buf.getvalue() or "(no output)"
         except Exception as e:
             return f"Python error: {e}"

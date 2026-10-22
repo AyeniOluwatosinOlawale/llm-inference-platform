@@ -38,7 +38,7 @@ spec:
         # Download model weights to local NVMe on first boot.
         # FIX #4: per-node hostPath cache eliminates shared-NFS burst throttling entirely.
         - name: model-pull
-          image: huggingface/downloader:latest
+          image: python:3.11-slim
           command:
             - sh
             - -c
@@ -47,7 +47,7 @@ spec:
                 echo "Model cache hit — skipping download"
                 exit 0
               fi
-              huggingface-cli download \
+              pip install -q huggingface-hub && huggingface-cli download \
                 meta-llama/Meta-Llama-3.1-8B-Instruct-AWQ \
                 --local-dir /models/llama3 \
                 --token "$HF_TOKEN"
@@ -67,9 +67,9 @@ spec:
 
       containers:
         - name: vllm
-          image: vllm/vllm-openai:v0.30.0
+          image: vllm/vllm-openai:v0.32.0
           command:
-            - python
+            - python3
             - -m
             - vllm.entrypoints.openai.api_server
           args:
@@ -135,6 +135,11 @@ spec:
             - name: CUDA_VISIBLE_DEVICES
               value: "0"
 
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["SYS_PTRACE"]   # required by CUDA profiling
           resources:
             requests:
               cpu: "4"

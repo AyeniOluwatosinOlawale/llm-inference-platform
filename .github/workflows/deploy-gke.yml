@@ -50,7 +50,12 @@ jobs:
         id: changes
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "component=${{ github.event.inputs.component }}" >> $GITHUB_OUTPUT
+            INPUT="${{ github.event.inputs.component }}"
+            case "$INPUT" in
+              all|litellm|agent|monitoring|vllm|base|sglang) ;;
+              *) echo "Invalid component: $INPUT"; exit 1 ;;
+            esac
+            echo "component=$INPUT" >> $GITHUB_OUTPUT
           else
             BEFORE="${{ github.event.before }}"
             if [[ -z "$BEFORE" || "$BEFORE" == "0000000000000000000000000000000000000000" ]]; then
@@ -111,6 +116,14 @@ jobs:
           kubectl apply -f k8s/litellm/pdb.yaml
           kubectl apply -f k8s/litellm/ingressroute.yaml
           kubectl rollout status deployment/litellm-proxy -n llm-gateway --timeout=120s
+
+      - name: Create / refresh agent-server-secrets
+        if: contains(steps.changes.outputs.component, 'agent') || steps.changes.outputs.component == 'all'
+        run: |
+          kubectl create secret generic agent-server-secrets \
+            --from-literal=TAVILY_API_KEY="${{ secrets.TAVILY_API_KEY }}" \
+            --namespace llm-gateway \
+            --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Rebuild agent server ConfigMap and deploy
         if: contains(steps.changes.outputs.component, 'agent') || steps.changes.outputs.component == 'all'

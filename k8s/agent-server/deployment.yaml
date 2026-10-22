@@ -44,6 +44,13 @@ spec:
             - containerPort: 8080
               name: http
           env:
+            - name: LITELLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-secrets
+                  key: LITELLM_MASTER_KEY
+            - name: LITELLM_BASE_URL
+              value: "http://litellm-proxy-service.llm-gateway.svc.cluster.local/v1"
             - name: TAVILY_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -63,6 +70,12 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 30
             failureThreshold: 3
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           resources:
             requests:
               cpu: "500m"
