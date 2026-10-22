@@ -31,7 +31,7 @@ data:
           "title": "KV-Cache Utilization %",
           "fieldConfig": {"defaults": {"unit": "percentunit", "max": 1}},
           "targets": [
-            {"expr": "avg(vllm:gpu_cache_usage_perc) by (model_name)", "legendFormat": "vLLM {{model_name}}"},
+            {"expr": "avg(vllm_gpu_cache_usage_perc) by (model_name)", "legendFormat": "vLLM {{model_name}}"},
             {"expr": "avg(sglang:gpu_cache_usage_perc) by (model_name)", "legendFormat": "SGLang {{model_name}}"}
           ]
         },
