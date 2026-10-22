@@ -36,6 +36,10 @@ from pathlib import Path
 import uvicorn
 from fastapi import FastAPI, HTTPException, Header, Request
 from fastapi.responses import StreamingResponse, HTMLResponse
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from pydantic import BaseModel
 from openai import OpenAI
 
@@ -48,6 +52,9 @@ MAX_STEPS        = 15
 TAVILY_API_KEY   = os.environ.get("TAVILY_API_KEY", "")
 
 client = OpenAI(base_url=LITELLM_BASE_URL, api_key=LITELLM_API_KEY)
+
+# ── Rate limiting ──────────────────────────────────────────────────────────────
+limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 
 # ── Base tools (always available) ─────────────────────────────────────────────
 
@@ -1290,6 +1297,18 @@ class GoalRequest(BaseModel):
     max_tokens: Optional[int] = 2048
     integrations: Optional[Dict[str, Any]] = None
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Block oversized payloads (prevent memory-exhaustion via giant messages)
+@app.middleware("http")
+async def limit_request_size(request: Request, call_next):
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > 512 * 1024:  # 512 KB cap
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Request body too large"}, status_code=413)
+    return await call_next(request)
+
 @app.get("/")
 def root():
     return {"status": "ok", "model": DEFAULT_MODEL, "version": "2.0.0",
@@ -1307,14 +1326,15 @@ def list_models():
     return {"object": "list", "data": [{"id": DEFAULT_MODEL, "object": "model", "owned_by": "anamodel"}]}
 
 @app.post("/v1/agent/goal")
-def agent_goal(request: GoalRequest, authorization: Optional[str] = Header(None)):
+@limiter.limit("20/minute")
+def agent_goal(request: Request, goal_req: GoalRequest, authorization: Optional[str] = Header(None)):
     """Goal-oriented endpoint: give it a goal, it plans and executes autonomously."""
     return StreamingResponse(
         run_goal_stream(
-            goal=request.goal,
-            integrations=request.integrations or {},
-            model=request.model or DEFAULT_MODEL,
-            max_tokens=request.max_tokens or 2048,
+            goal=goal_req.goal,
+            integrations=goal_req.integrations or {},
+            model=goal_req.model or DEFAULT_MODEL,
+            max_tokens=goal_req.max_tokens or 2048,
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
@@ -1328,13 +1348,14 @@ def chat_ui():
     return HTMLResponse("<h1>Chat UI not found. Deploy chat_ui.html alongside agent_server.py</h1>")
 
 @app.post("/v1/chat/completions")
-def chat_completions(request: ChatRequest, authorization: Optional[str] = Header(None)):
-    messages = [m.model_dump() for m in request.messages]
-    model = request.model or DEFAULT_MODEL
-    max_tokens = request.max_tokens or 1024
-    integrations = request.integrations or {}
+@limiter.limit("30/minute")
+def chat_completions(request: Request, chat_req: ChatRequest, authorization: Optional[str] = Header(None)):
+    messages = [m.model_dump() for m in chat_req.messages]
+    model = chat_req.model or DEFAULT_MODEL
+    max_tokens = chat_req.max_tokens or 1024
+    integrations = chat_req.integrations or {}
 
-    if request.stream:
+    if chat_req.stream:
         return StreamingResponse(
             run_agent_stream(messages, model=model, max_tokens=max_tokens, integrations=integrations),
             media_type="text/event-stream",

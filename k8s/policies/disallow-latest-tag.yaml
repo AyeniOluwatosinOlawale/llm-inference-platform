@@ -14,7 +14,7 @@ metadata:
       Requires all container images to use an explicit, immutable tag
       (not :latest and not untagged) for reproducible deployments.
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: no-latest-tag

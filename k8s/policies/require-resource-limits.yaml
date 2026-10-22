@@ -12,7 +12,7 @@ metadata:
       All containers must specify CPU and memory limits to prevent
       noisy-neighbor resource starvation on GPU nodes.
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-container-limits

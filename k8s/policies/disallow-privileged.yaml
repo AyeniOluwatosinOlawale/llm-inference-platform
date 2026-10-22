@@ -12,7 +12,7 @@ metadata:
       Prevents containers from running as root with full host capabilities.
       GPU workloads on this platform do not require privileged mode.
 spec:
-  validationFailureAction: Audit   # switch to Enforce after verifying existing pods
+  validationFailureAction: Enforce   # switch to Enforce after verifying existing pods
   background: true
   rules:
     - name: no-privileged
