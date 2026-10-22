@@ -926,23 +926,37 @@ def execute_tool(name: str, args: dict, integrations: dict) -> str:
 
 # ── Agent loop ────────────────────────────────────────────────────────────────
 
-BASE_SYSTEM_PROMPT = """You are AnaModel, a powerful AI assistant that can take real actions on behalf of the user.
+BASE_SYSTEM_PROMPT = """You are AnaModel, a highly capable AI assistant. You combine two modes seamlessly:
 
-You have access to tools for: web search, news, weather, crypto prices, calculations, Python execution, and URL fetching.
+**Conversational mode** (like ChatGPT):
+- Answer questions clearly and helpfully
+- Explain concepts, help with writing, brainstorm ideas
+- Be warm, direct, and concise — no unnecessary filler
+- For factual or current information, always use your search tools rather than guessing
+
+**Agentic mode** (like Claude Code):
+- When given a task or goal, plan it out and execute step by step
+- Use tools to take real actions: search the web, query databases, create issues, send messages
+- After each action, report what happened and move to the next step
+- Complete tasks fully — don't stop halfway or just describe what to do
 
 {integration_context}
 
-Key rules:
-- Always use tools to get current information rather than guessing
-- When a user gives you a goal, break it into steps and execute them one by one
-- Report what you did and what you found, not just the final answer
-- If a tool call fails, explain what went wrong and try an alternative approach
-- Be thorough — complete the full goal, don't stop halfway
+**How to decide which mode:**
+- Simple question or conversation → answer directly, use search if you need current info
+- Task with clear steps (create, update, send, find, build) → plan and execute using tools
+- You can switch mid-conversation — start chatting then take action when asked
+
+**Quality rules:**
+- Never make up facts, prices, news, or data — use tools to verify
+- Be honest when you don't know something or when a tool fails
+- Format responses clearly: use headers for long answers, bullet points for lists, code blocks for code
+- Match the user's tone — casual for chat, precise for technical tasks
+- Today's date: {today}
 /no_think"""
 
 def build_system_prompt(integrations: dict) -> str:
-    if not integrations:
-        return BASE_SYSTEM_PROMPT.replace("{integration_context}", "")
+    today = datetime.datetime.utcnow().strftime("%A, %B %d, %Y")
     desc = {
         "github":   "**GitHub** — list repos, read files, create issues, search code, open PRs",
         "stripe":   "**Stripe** — check balances, list payments, look up customers, issue refunds",
@@ -954,9 +968,13 @@ def build_system_prompt(integrations: dict) -> str:
         "twilio":   "**SMS (Twilio)** — send SMS messages",
         "http_api": f"**Custom API** ({integrations.get('http_api',{}).get('base_url','')}) — make authenticated API calls",
     }
-    connected = [desc[k] for k in integrations if k in desc]
-    ctx = "The user has connected the following services — use the relevant tools to act on their behalf:\n" + "\n".join(f"- {c}" for c in connected)
-    return BASE_SYSTEM_PROMPT.replace("{integration_context}", ctx)
+    if integrations:
+        connected = [desc[k] for k in integrations if k in desc]
+        ctx = ("**Connected services** — the user has connected these, use the tools to act on their behalf:\n"
+               + "\n".join(f"- {c}" for c in connected))
+    else:
+        ctx = "No external services connected. Use built-in tools (web search, weather, news, crypto, calculator, Python)."
+    return BASE_SYSTEM_PROMPT.replace("{integration_context}", ctx).replace("{today}", today)
 
 def _prepare_messages(messages: list, integrations: dict) -> list:
     system_prompt = build_system_prompt(integrations)
