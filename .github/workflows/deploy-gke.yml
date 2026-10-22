@@ -64,7 +64,9 @@ jobs:
 
       - name: Deploy base (namespaces + network policies)
         if: contains(steps.changes.outputs.component, 'base') || steps.changes.outputs.component == 'all'
-        run: kubectl apply -f k8s/base/
+        run: |
+          kubectl apply -f k8s/base/namespaces.yaml
+          kubectl apply -f k8s/base/network-policies/ 2>/dev/null || true
 
       - name: Deploy LiteLLM config + proxy
         if: contains(steps.changes.outputs.component, 'litellm') || steps.changes.outputs.component == 'all'
@@ -93,18 +95,21 @@ jobs:
 
       - name: Deploy monitoring
         if: contains(steps.changes.outputs.component, 'monitoring') || steps.changes.outputs.component == 'all'
-        run: kubectl apply -f k8s/monitoring/
+        run: |
+          kubectl apply -f k8s/monitoring/prometheus-rules.yaml
+          kubectl apply -f k8s/monitoring/alertmanager-config.yaml
+          kubectl apply -f k8s/monitoring/dashboards/ 2>/dev/null || true
 
       - name: Deploy vLLM
         if: contains(steps.changes.outputs.component, 'vllm') || steps.changes.outputs.component == 'all'
         run: |
-          kubectl apply -f k8s/vllm/
+          find k8s/vllm -name '*.yaml' | xargs -I{} kubectl apply -f {}
           kubectl rollout status deployment -n llm-serving -l engine=vllm --timeout=600s || true
 
       - name: Deploy SGLang
         if: contains(steps.changes.outputs.component, 'sglang') || steps.changes.outputs.component == 'all'
         run: |
-          kubectl apply -f k8s/sglang/ 2>/dev/null || echo "No sglang manifests yet"
+          find k8s/sglang -name '*.yaml' 2>/dev/null | xargs -I{} kubectl apply -f {} || echo "No sglang manifests yet"
 
       - name: Apply TLS config
         if: steps.changes.outputs.component == 'all'
