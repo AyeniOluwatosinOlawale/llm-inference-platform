@@ -1189,7 +1189,7 @@ def _run_tool_loop(messages, model, max_tokens, tools, integrations):
             messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
     return messages
 
-def run_agent(messages, model=DEFAULT_MODEL, max_tokens=1024, integrations=None):
+def run_agent(messages, model=DEFAULT_MODEL, max_tokens=4096, integrations=None):
     integrations = {**extract_credentials_from_messages(messages), **(integrations or {})}
     tools = build_tools(integrations)
     messages = _prepare_messages(messages, integrations)
@@ -1238,7 +1238,7 @@ TOOL_LABELS = {
     "api_call": "🔌 Calling API",
 }
 
-def run_agent_stream(messages, model=DEFAULT_MODEL, max_tokens=1024, integrations=None,
+def run_agent_stream(messages, model=DEFAULT_MODEL, max_tokens=4096, integrations=None,
                      allow_destructive: bool = False):
     """
     Unified streaming agent with three-tier tool execution guard:
@@ -1421,7 +1421,7 @@ class Message(BaseModel):
 class ChatRequest(BaseModel):
     model: Optional[str] = DEFAULT_MODEL
     messages: list[Message]
-    max_tokens: Optional[int] = 1024
+    max_tokens: Optional[int] = 4096
     temperature: Optional[float] = 0.1
     stream: Optional[bool] = False
     integrations: Optional[Dict[str, Any]] = None
