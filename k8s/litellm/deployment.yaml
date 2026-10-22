@@ -70,8 +70,6 @@ spec:
             periodSeconds: 30
             failureThreshold: 3
           securityContext:
-            runAsNonRoot: true
-            runAsUser: 1000
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
