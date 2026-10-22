@@ -1,0 +1,13 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: anamodel-tls
+  namespace: llm-gateway
+spec:
+  secretName: anamodel-tls-secret
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - 136.65.123.94.nip.io
+    - api.136.65.123.94.nip.io

@@ -19,11 +19,26 @@ data:
       - model_name: qwen3-vllm
         litellm_params:
           model: openai/qwen3
-          api_base: http://qwen3-vllm-service.llm-serving.svc.cluster.local:8000/v1
+          api_base: http://qwen3-service.llm-serving.svc.cluster.local:8000/v1
           api_key: "none"
           rpm: 60
           input_cost_per_token: 0.0000002
           output_cost_per_token: 0.0000002
+          extra_body:
+            chat_template_kwargs:
+              enable_thinking: false
+
+      - model_name: AnaModel
+        litellm_params:
+          model: openai/qwen3
+          api_base: http://qwen3-service.llm-serving.svc.cluster.local:8000/v1
+          api_key: "none"
+          rpm: 60
+          input_cost_per_token: 0.0000002
+          output_cost_per_token: 0.0000002
+          extra_body:
+            chat_template_kwargs:
+              enable_thinking: false
 
       # ── SGLang backends ────────────────────────────────────────────────────────
       - model_name: llama3-sglang
@@ -75,15 +90,21 @@ data:
       - model_name: qwen3
         litellm_params:
           model: openai/qwen3
-          api_base: http://qwen3-vllm-service.llm-serving.svc.cluster.local:8000/v1
+          api_base: http://qwen3-service.llm-serving.svc.cluster.local:8000/v1
           api_key: "none"
           weight: 1
+          extra_body:
+            chat_template_kwargs:
+              enable_thinking: false
       - model_name: qwen3
         litellm_params:
           model: openai/qwen3-sglang
           api_base: http://qwen3-sglang-service.llm-serving.svc.cluster.local:30000/v1
           api_key: "none"
           weight: 1
+          extra_body:
+            chat_template_kwargs:
+              enable_thinking: false
 
     router_settings:
       routing_strategy: least-busy
@@ -102,14 +123,22 @@ data:
         type: redis
         host: redis-service.llm-gateway.svc.cluster.local
         port: 6379
-        password: "${REDIS_PASSWORD}"
+        password: "os.environ/REDIS_PASSWORD"
         ttl: 3600
 
       success_callback: ["prometheus"]
       failure_callback: ["prometheus"]
       set_verbose: false
+      custom_callback_module: /etc/litellm/callbacks.py
 
     general_settings:
-      master_key: "${LITELLM_MASTER_KEY}"
-      database_url: "${DATABASE_URL}"
+      master_key: "os.environ/LITELLM_MASTER_KEY"
+      database_url: "os.environ/DATABASE_URL"
       store_model_in_db: true
+      ui_access_mode: "all"
+      allow_user_auth: true
+      default_team_settings:
+        max_budget: 10
+        budget_duration: "30d"
+        tpm_limit: 100000
+        rpm_limit: 60

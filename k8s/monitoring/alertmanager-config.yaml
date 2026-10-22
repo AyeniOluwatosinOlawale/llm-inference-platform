@@ -1,0 +1,117 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-kube-prometheus-stack-alertmanager
+  namespace: monitoring
+stringData:
+  alertmanager.yaml: |
+    global:
+      resolve_timeout: 5m
+      smtp_smarthost: 'smtp.resend.com:587'
+      smtp_from: 'AnaModel Alerts <alerts@vertinab.com>'
+      smtp_auth_username: 'resend'
+      smtp_auth_password: 'REPLACE_WITH_RESEND_API_KEY'
+      smtp_require_tls: true
+      slack_api_url: 'REPLACE_WITH_SLACK_WEBHOOK_URL'
+
+    templates:
+      - /etc/alertmanager/config/*.tmpl
+
+    inhibit_rules:
+      - equal: [namespace, alertname]
+        source_matchers: [severity = critical]
+        target_matchers: [severity =~ "warning|info"]
+      - equal: [namespace, alertname]
+        source_matchers: [severity = warning]
+        target_matchers: [severity = info]
+      - equal: [namespace]
+        source_matchers: [alertname = InfoInhibitor]
+        target_matchers: [severity = info]
+      - target_matchers: [alertname = InfoInhibitor]
+
+    receivers:
+      - name: "null"
+
+      - name: slack-alerts
+        slack_configs:
+          - channel: '#all-llm-platform-alerts'
+            send_resolved: true
+            title: '{{ if eq .Status "firing" }}🔴 ALERT FIRING{{ else }}✅ RESOLVED{{ end }}: {{ .GroupLabels.alertname }}'
+            text: |
+              {{ range .Alerts }}
+              *Alert:* {{ .Annotations.summary }}
+              *Details:* {{ .Annotations.description }}
+              *Severity:* {{ .Labels.severity }}
+              *Since:* {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
+              {{ end }}
+            footer: 'AnaModel Platform | LLM Inference'
+
+      - name: email-alerts
+        email_configs:
+          - to: 'ayenioluwatosinolawale@gmail.com'
+            send_resolved: true
+            subject: '{{ if eq .Status "firing" }}🔴 [ALERT] {{ else }}✅ [RESOLVED] {{ end }}{{ .GroupLabels.alertname }}'
+            body: |
+              {{ range .Alerts }}
+              Alert: {{ .Annotations.summary }}
+              Details: {{ .Annotations.description }}
+              Severity: {{ .Labels.severity }}
+              Since: {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
+              {{ end }}
+
+              -- AnaModel Platform
+
+      - name: all-channels
+        slack_configs:
+          - channel: '#all-llm-platform-alerts'
+            send_resolved: true
+            title: '{{ if eq .Status "firing" }}🔴 ALERT FIRING{{ else }}✅ RESOLVED{{ end }}: {{ .GroupLabels.alertname }}'
+            text: |
+              {{ range .Alerts }}
+              *Alert:* {{ .Annotations.summary }}
+              *Details:* {{ .Annotations.description }}
+              *Severity:* {{ .Labels.severity }}
+              *Since:* {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
+              {{ end }}
+        email_configs:
+          - to: 'ayenioluwatosinolawale@gmail.com'
+            send_resolved: true
+            subject: '{{ if eq .Status "firing" }}🔴 [ALERT] {{ else }}✅ [RESOLVED] {{ end }}{{ .GroupLabels.alertname }}'
+            body: |
+              {{ range .Alerts }}
+              Alert: {{ .Annotations.summary }}
+              Details: {{ .Annotations.description }}
+              Severity: {{ .Labels.severity }}
+              Since: {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
+              {{ end }}
+
+              -- AnaModel Platform
+
+    route:
+      group_by: [namespace, alertname]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: "null"
+      routes:
+        # Silence Watchdog and TargetDown (GKE limitation)
+        - matchers: [alertname = "Watchdog"]
+          receiver: "null"
+        - matchers: [alertname = "TargetDown"]
+          receiver: "null"
+        - matchers: [alertname = "KubeCPUOvercommit"]
+          receiver: "null"
+
+        # LLM critical alerts → both channels
+        - matchers: [severity = critical]
+          receiver: all-channels
+          repeat_interval: 1h
+
+        # LLM warning alerts → both channels
+        - matchers: [namespace = "llm-serving"]
+          receiver: all-channels
+          repeat_interval: 2h
+
+        - matchers: [namespace = "llm-gateway"]
+          receiver: all-channels
+          repeat_interval: 2h

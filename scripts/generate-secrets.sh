@@ -28,8 +28,13 @@ DATABASE_URL=postgresql://litellm:${POSTGRES_PASSWORD}@postgres-service.llm-gate
 HUGGINGFACE_TOKEN=REPLACE_ME
 
 # Slack alerts — AlertManager posts to #all-llm-platform-alerts
-# Paste your webhook URL here (from api.slack.com/apps → Incoming Webhooks)
 SLACK_WEBHOOK_URL=REPLACE_ME
+
+# SMTP password for Resend email alerts (alerts@vertinab.com)
+SMTP_PASSWORD=REPLACE_ME
+
+# Tavily web search API key — get free at tavily.com
+TAVILY_API_KEY=REPLACE_ME
 
 # Velero cluster backup
 VELERO_BACKUP_BUCKET=llm-inference-platform-velero-backups

@@ -1,0 +1,26 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: anamodel-agent-ingressroute
+  namespace: llm-gateway
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`/agent`)
+      kind: Rule
+      middlewares:
+        - name: agent-strip-prefix
+      services:
+        - name: anamodel-agent-service
+          port: 80
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: agent-strip-prefix
+  namespace: llm-gateway
+spec:
+  stripPrefix:
+    prefixes:
+      - /agent

@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anamodel-agent-server
+  namespace: llm-gateway
+  labels:
+    app: anamodel-agent-server
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: anamodel-agent-server
+  template:
+    metadata:
+      labels:
+        app: anamodel-agent-server
+    spec:
+      initContainers:
+        - name: install-deps
+          image: python:3.11-slim
+          command:
+            - sh
+            - -c
+            - |
+              pip install --quiet --target /deps \
+                fastapi==0.111.0 \
+                uvicorn==0.30.1 \
+                "openai>=1.52.0" \
+                tavily-python==0.3.3 \
+                ddgs
+          volumeMounts:
+            - name: deps
+              mountPath: /deps
+      containers:
+        - name: agent-server
+          image: python:3.11-slim
+          command:
+            - sh
+            - -c
+            - |
+              export PYTHONPATH=/deps:$PYTHONPATH
+              python /app/agent_server.py
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: TAVILY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: agent-server-secrets
+                  key: TAVILY_API_KEY
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "500m"
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: app-code
+              mountPath: /app
+            - name: deps
+              mountPath: /deps
+      volumes:
+        - name: app-code
+          configMap:
+            name: anamodel-agent-code
+        - name: deps
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: anamodel-agent-service
+  namespace: llm-gateway
+  labels:
+    app: anamodel-agent-server
+spec:
+  selector:
+    app: anamodel-agent-server
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: anamodel-agent-hpa
+  namespace: llm-gateway
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: anamodel-agent-server
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: anamodel-agent-pdb
+  namespace: llm-gateway
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: anamodel-agent-server

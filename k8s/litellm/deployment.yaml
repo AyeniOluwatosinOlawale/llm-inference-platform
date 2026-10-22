@@ -25,7 +25,6 @@ spec:
           args:
             - --config=/etc/litellm/config.yaml
             - --port=4000
-            - --detailed_debug=false
           ports:
             - containerPort: 4000
               name: http
@@ -75,12 +74,20 @@ spec:
               memory: 2Gi
           volumeMounts:
             - name: config
-              mountPath: /etc/litellm
+              mountPath: /etc/litellm/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: callbacks
+              mountPath: /etc/litellm/callbacks.py
+              subPath: callbacks.py
               readOnly: true
       volumes:
         - name: config
           configMap:
             name: litellm-config
+        - name: callbacks
+          configMap:
+            name: litellm-callbacks
 ---
 apiVersion: v1
 kind: Service

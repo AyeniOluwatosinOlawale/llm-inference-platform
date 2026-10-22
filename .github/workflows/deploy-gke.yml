@@ -1,0 +1,122 @@
+name: Deploy to GKE
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'k8s/**'
+      - 'examples/agent_server.py'
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'Component to deploy (all | litellm | agent | monitoring | vllm | base)'
+        required: true
+        default: 'all'
+
+env:
+  GCP_PROJECT: testing-494308
+  GKE_CLUSTER: llm-inference
+  GKE_REGION: us-central1
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_REGION }}
+          project_id: ${{ env.GCP_PROJECT }}
+
+      - name: Detect changed components
+        id: changes
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "component=${{ github.event.inputs.component }}" >> $GITHUB_OUTPUT
+          else
+            CHANGED=$(git diff --name-only HEAD~1 HEAD)
+            echo "Changed files: $CHANGED"
+            COMP="none"
+            echo "$CHANGED" | grep -q "^k8s/base/"        && COMP="base"
+            echo "$CHANGED" | grep -q "^k8s/litellm/"     && COMP="${COMP},litellm"
+            echo "$CHANGED" | grep -q "^k8s/agent-server/" && COMP="${COMP},agent"
+            echo "$CHANGED" | grep -q "^examples/agent_server.py" && COMP="${COMP},agent"
+            echo "$CHANGED" | grep -q "^k8s/monitoring/"  && COMP="${COMP},monitoring"
+            echo "$CHANGED" | grep -q "^k8s/vllm/"        && COMP="${COMP},vllm"
+            echo "$CHANGED" | grep -q "^k8s/sglang/"      && COMP="${COMP},sglang"
+            echo "component=${COMP#none,}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy base (namespaces + network policies)
+        if: contains(steps.changes.outputs.component, 'base') || steps.changes.outputs.component == 'all'
+        run: kubectl apply -f k8s/base/
+
+      - name: Deploy LiteLLM config + proxy
+        if: contains(steps.changes.outputs.component, 'litellm') || steps.changes.outputs.component == 'all'
+        run: |
+          kubectl apply -f k8s/litellm/redis.yaml
+          kubectl apply -f k8s/litellm/postgres.yaml
+          kubectl apply -f k8s/litellm/callbacks.yaml
+          kubectl apply -f k8s/litellm/config.yaml
+          kubectl apply -f k8s/litellm/deployment.yaml
+          kubectl apply -f k8s/litellm/hpa.yaml
+          kubectl apply -f k8s/litellm/pdb.yaml
+          kubectl apply -f k8s/litellm/ingressroute.yaml
+          kubectl rollout status deployment/litellm-proxy -n llm-gateway --timeout=120s
+
+      - name: Rebuild agent server ConfigMap and deploy
+        if: contains(steps.changes.outputs.component, 'agent') || steps.changes.outputs.component == 'all'
+        run: |
+          kubectl create configmap anamodel-agent-code \
+            --from-file=agent_server.py=examples/agent_server.py \
+            --namespace llm-gateway \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl apply -f k8s/agent-server/deployment.yaml
+          kubectl apply -f k8s/agent-server/ingressroute.yaml
+          kubectl rollout restart deployment/anamodel-agent-server -n llm-gateway
+          kubectl rollout status deployment/anamodel-agent-server -n llm-gateway --timeout=300s
+
+      - name: Deploy monitoring
+        if: contains(steps.changes.outputs.component, 'monitoring') || steps.changes.outputs.component == 'all'
+        run: kubectl apply -f k8s/monitoring/
+
+      - name: Deploy vLLM
+        if: contains(steps.changes.outputs.component, 'vllm') || steps.changes.outputs.component == 'all'
+        run: |
+          kubectl apply -f k8s/vllm/
+          kubectl rollout status deployment -n llm-serving -l engine=vllm --timeout=600s || true
+
+      - name: Deploy SGLang
+        if: contains(steps.changes.outputs.component, 'sglang') || steps.changes.outputs.component == 'all'
+        run: |
+          kubectl apply -f k8s/sglang/ 2>/dev/null || echo "No sglang manifests yet"
+
+      - name: Apply TLS config
+        if: steps.changes.outputs.component == 'all'
+        run: kubectl apply -f k8s/tls/
+
+      - name: Health check
+        run: |
+          echo "Checking LiteLLM..."
+          kubectl get pods -n llm-gateway
+          echo ""
+          echo "Checking model serving..."
+          kubectl get pods -n llm-serving
+          echo ""
+          echo "Checking ingress..."
+          kubectl get ingressroute -n llm-gateway

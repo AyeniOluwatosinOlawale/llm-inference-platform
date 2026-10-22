@@ -1,0 +1,63 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: llm-gateway
+spec:
+  schedule: "0 2 * * *"    # 2am UTC daily
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pg-dump
+              image: postgres:15-alpine
+              command:
+                - sh
+                - -c
+                - |
+                  TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+                  BACKUP_FILE="/backup/litellm_${TIMESTAMP}.sql.gz"
+                  echo "Starting backup: ${BACKUP_FILE}"
+                  pg_dump "$DATABASE_URL" | gzip > "${BACKUP_FILE}"
+                  echo "Backup complete: $(du -sh ${BACKUP_FILE})"
+                  # Keep only last 7 backups
+                  ls -t /backup/*.sql.gz | tail -n +8 | xargs -r rm -f
+                  echo "Remaining backups:"
+                  ls -lh /backup/*.sql.gz
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: litellm-secrets
+                      key: DATABASE_URL
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backup
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: 128Mi
+                limits:
+                  cpu: "500m"
+                  memory: 512Mi
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: postgres-backup-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backup-pvc
+  namespace: llm-gateway
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard-rwo

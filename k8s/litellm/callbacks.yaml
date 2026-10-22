@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-callbacks
+  namespace: llm-gateway
+data:
+  callbacks.py: |
+    from litellm.integrations.custom_logger import CustomLogger
+
+    class QwenThinkingDisabler(CustomLogger):
+        """Injects chat_template_kwargs to disable Qwen3 thinking mode on all requests."""
+
+        async def async_pre_call_hook(self, user_api_key_dict, cache, data, call_type):
+            if call_type in ("completion", "acompletion"):
+                extra_body = data.get("extra_body") or {}
+                if "chat_template_kwargs" not in extra_body:
+                    extra_body["chat_template_kwargs"] = {"enable_thinking": False}
+                    data["extra_body"] = extra_body
+            return data
+
+    proxy_handler_instance = QwenThinkingDisabler()
