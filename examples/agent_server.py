@@ -993,31 +993,112 @@ def run_agent(messages, model=DEFAULT_MODEL, max_tokens=1024, integrations=None)
     content = response.choices[0].message.content or ""
     return re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
 
+TOOL_LABELS = {
+    "web_search": "🔍 Searching the web",
+    "get_news": "📰 Getting latest news",
+    "get_weather": "🌤️ Checking weather",
+    "get_crypto_price": "💰 Fetching crypto prices",
+    "http_get": "🌐 Fetching URL",
+    "calculator": "🧮 Calculating",
+    "run_python": "🐍 Running code",
+    "get_time": "🕐 Getting time",
+    "github_list_repos": "🐙 Listing GitHub repos",
+    "github_list_issues": "🐙 Listing GitHub issues",
+    "github_create_issue": "🐙 Creating GitHub issue",
+    "github_read_file": "🐙 Reading file from GitHub",
+    "github_search_code": "🐙 Searching GitHub code",
+    "github_create_pr": "🐙 Creating pull request",
+    "stripe_get_balance": "💳 Checking Stripe balance",
+    "stripe_list_payments": "💳 Listing Stripe payments",
+    "stripe_get_customer": "💳 Looking up Stripe customer",
+    "stripe_create_refund": "💳 Issuing Stripe refund",
+    "supabase_list_tables": "🟢 Listing Supabase tables",
+    "supabase_query": "🟢 Querying Supabase",
+    "supabase_insert": "🟢 Inserting into Supabase",
+    "supabase_update": "🟢 Updating Supabase record",
+    "slack_list_channels": "💬 Listing Slack channels",
+    "slack_send_message": "💬 Sending Slack message",
+    "slack_get_messages": "💬 Reading Slack messages",
+    "notion_search": "📝 Searching Notion",
+    "notion_create_page": "📝 Creating Notion page",
+    "notion_get_page": "📝 Reading Notion page",
+    "linear_list_issues": "📐 Listing Linear issues",
+    "linear_create_issue": "📐 Creating Linear issue",
+    "linear_list_projects": "📐 Listing Linear projects",
+    "send_email": "📧 Sending email",
+    "send_sms": "📱 Sending SMS",
+    "api_call": "🔌 Calling API",
+}
+
 def run_agent_stream(messages, model=DEFAULT_MODEL, max_tokens=1024, integrations=None):
+    """
+    Unified streaming agent: handles simple chat, web search, and multi-step goal execution
+    all in one. Streams tool progress in real-time so the user sees what's happening.
+    """
     integrations = integrations or {}
     tools = build_tools(integrations)
     cid = f"chatcmpl-{uuid.uuid4().hex[:12]}"
     created = int(time.time())
-    messages = _prepare_messages(messages, integrations)
-    messages = _run_tool_loop(messages, model, max_tokens, tools, integrations)
 
-    stream = client.chat.completions.create(
-        model=model, messages=messages, tools=tools,
-        tool_choice="none", max_tokens=max_tokens, temperature=0.1, stream=True,
-    )
+    def _chunk(content, finish=None):
+        return f"data: {json.dumps({'id':cid,'object':'chat.completion.chunk','created':created,'model':model,'choices':[{'index':0,'delta':{'content':content} if content else {},'finish_reason':finish}]})}\n\n"
+
+    messages = _prepare_messages(messages, integrations)
     think_buf = ""; in_think = False
-    for chunk in stream:
-        token = chunk.choices[0].delta.content or ""
-        if not in_think and "<think>" in token:
-            in_think = True; token = token.split("<think>")[0]
-        if in_think:
-            think_buf += token
-            if "</think>" in think_buf:
-                in_think = False; token = think_buf.split("</think>", 1)[1]; think_buf = ""
-            else: continue
-        if token:
-            yield f"data: {json.dumps({'id':cid,'object':'chat.completion.chunk','created':created,'model':model,'choices':[{'index':0,'delta':{'content':token},'finish_reason':None}]})}\n\n"
-    yield f"data: {json.dumps({'id':cid,'object':'chat.completion.chunk','created':created,'model':model,'choices':[{'index':0,'delta':{},'finish_reason':'stop'}]})}\n\n"
+
+    for step in range(MAX_STEPS):
+        response = client.chat.completions.create(
+            model=model, messages=messages, tools=tools,
+            tool_choice="auto", max_tokens=max_tokens, temperature=0.1,
+        )
+        msg = response.choices[0].message
+        finish = response.choices[0].finish_reason
+
+        # Stream any text the model produced before tool calls
+        if msg.content:
+            clean = re.sub(r"<think>.*?</think>", "", msg.content, flags=re.DOTALL).strip()
+            if clean:
+                yield _chunk(clean + "\n\n")
+
+        # No tool calls — stream final answer
+        if finish == "stop" or not msg.tool_calls:
+            if step == 0:
+                # Simple answer with no tools — re-stream properly via streaming call
+                stream = client.chat.completions.create(
+                    model=model, messages=messages, tools=tools,
+                    tool_choice="none", max_tokens=max_tokens, temperature=0.1, stream=True,
+                )
+                for chunk in stream:
+                    token = chunk.choices[0].delta.content or ""
+                    if not in_think and "<think>" in token:
+                        in_think = True; token = token.split("<think>")[0]
+                    if in_think:
+                        think_buf += token
+                        if "</think>" in think_buf:
+                            in_think = False; token = think_buf.split("</think>", 1)[1]; think_buf = ""
+                        else: continue
+                    if token:
+                        yield _chunk(token)
+            break
+
+        # Execute tool calls — show progress to user
+        messages.append(msg)
+        for tc in msg.tool_calls:
+            label = TOOL_LABELS.get(tc.function.name, f"⚙️ Using {tc.function.name}")
+            args = json.loads(tc.function.arguments)
+            # Show what we're doing
+            detail = ""
+            if "query" in args:     detail = f": *{args['query'][:60]}*"
+            elif "location" in args: detail = f": *{args['location']}*"
+            elif "channel" in args:  detail = f": *{args['channel']}*"
+            elif "repo" in args:     detail = f": *{args['repo']}*"
+            elif "table" in args:    detail = f": *{args['table']}*"
+            elif "to" in args:       detail = f" to *{args['to']}*"
+            yield _chunk(f"{label}{detail}...\n")
+            result = execute_tool(tc.function.name, args, integrations)
+            messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
+
+    yield _chunk("", finish="stop")
     yield "data: [DONE]\n\n"
 
 
