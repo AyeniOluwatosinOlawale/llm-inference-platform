@@ -2,22 +2,30 @@
 AnaModel Agent Server
 OpenAI-compatible FastAPI endpoint with:
   - Built-in tools: web search, weather, news, crypto, calculator, Python
-  - User integrations: GitHub, Stripe, Supabase, Slack, custom HTTP API
+  - User integrations: GitHub, Stripe, Supabase, Slack, Notion, Linear, Resend, Twilio, custom HTTP API
+  - Automatic credential detection from conversation (users just paste tokens in chat)
   - Chat UI served at /chat
   - Streaming (SSE)
 
-Users pass their credentials in the request under `integrations`:
-  {
-    "model": "AnaModel",
-    "messages": [...],
-    "integrations": {
-      "github":   {"token": "ghp_xxx"},
-      "stripe":   {"api_key": "sk_xxx"},
-      "supabase": {"url": "https://xxx.supabase.co", "anon_key": "eyJ..."},
-      "slack":    {"token": "xoxb-xxx"},
-      "http_api": {"base_url": "https://api.example.com", "auth_header": "Bearer tok"}
-    }
-  }
+Two ways to connect services:
+
+1. Paste token/key in chat (no setup needed):
+   "My GitHub token is ghp_xxx, show me my repos"
+   "Stripe key: sk_live_xxx — any failed payments today?"
+   "supabase url: https://xxx.supabase.co key: eyJ... — how many users signed up?"
+
+2. Pass credentials in the request under `integrations`:
+   {
+     "model": "AnaModel",
+     "messages": [...],
+     "integrations": {
+       "github":   {"token": "ghp_xxx"},
+       "stripe":   {"api_key": "sk_xxx"},
+       "supabase": {"url": "https://xxx.supabase.co", "anon_key": "eyJ..."},
+       "slack":    {"token": "xoxb-xxx"},
+       "http_api": {"base_url": "https://api.example.com", "auth_header": "Bearer tok"}
+     }
+   }
 """
 
 import json, re, math, io, datetime, contextlib
@@ -332,6 +340,61 @@ TWILIO_TOOLS = [
         }, "required": ["to", "message"]},
     }},
 ]
+
+# ── Credential extractor ──────────────────────────────────────────────────────
+# Scans user messages for tokens/keys pasted inline — no sidebar, no setup needed.
+
+_CRED_PATTERNS = [
+    ("github",  "token",    r"ghp_[A-Za-z0-9]{36,}"),
+    ("github",  "token",    r"github_pat_[A-Za-z0-9_]{36,}"),
+    ("github",  "token",    r"gho_[A-Za-z0-9]{36,}"),
+    ("stripe",  "api_key",  r"sk_(?:live|test)_[A-Za-z0-9]{24,}"),
+    ("stripe",  "api_key",  r"rk_(?:live|test)_[A-Za-z0-9]{24,}"),
+    ("slack",   "token",    r"xox[bpas]-[A-Za-z0-9\-]{20,}"),
+    ("notion",  "token",    r"secret_[A-Za-z0-9]{43,}"),
+    ("notion",  "token",    r"ntn_[A-Za-z0-9]{43,}"),
+    ("linear",  "api_key",  r"lin_api_[A-Za-z0-9]{40,}"),
+    ("resend",  "api_key",  r"re_[A-Za-z0-9]{24,}"),
+    # Supabase JWT (anon/service key)
+    ("supabase", "anon_key", r"eyJ[A-Za-z0-9_\-]{50,}\.[A-Za-z0-9_\-]{50,}\.[A-Za-z0-9_\-]{20,}"),
+]
+_SUPABASE_URL_RE  = re.compile(r"https://[a-z0-9]{20,}\.supabase\.co(?:/[^\s\"']*)?")
+_TWILIO_SID_RE    = re.compile(r"\bAC[a-f0-9]{32}\b")
+_TWILIO_TOKEN_RE  = re.compile(r"\b[a-f0-9]{32}\b")
+_TWILIO_PHONE_RE  = re.compile(r"\+\d{7,15}")
+
+def extract_credentials_from_messages(messages: list) -> dict:
+    """
+    Auto-detects credentials pasted anywhere in user messages.
+    Returns a partial integrations dict — same shape as the `integrations` request field.
+    Explicit integrations passed in the request always win over extracted ones.
+    """
+    text = "\n".join(m.get("content", "") for m in messages if m.get("role") == "user")
+    creds: dict = {}
+
+    for service, field, pattern in _CRED_PATTERNS:
+        m = re.search(pattern, text)
+        if m:
+            creds.setdefault(service, {})[field] = m.group(0)
+
+    # Supabase URL (separate from JWT key)
+    m = _SUPABASE_URL_RE.search(text)
+    if m:
+        creds.setdefault("supabase", {})["url"] = m.group(0).rstrip("/")
+
+    # Twilio: SID starts with AC + 32-hex auth token + from-number
+    sid_m = _TWILIO_SID_RE.search(text)
+    if sid_m:
+        creds.setdefault("twilio", {})["account_sid"] = sid_m.group(0)
+        tok_m = _TWILIO_TOKEN_RE.search(text.replace(sid_m.group(0), ""))
+        if tok_m:
+            creds["twilio"]["auth_token"] = tok_m.group(0)
+        phone_m = _TWILIO_PHONE_RE.search(text)
+        if phone_m:
+            creds["twilio"]["from_number"] = phone_m.group(0)
+
+    return creds
+
 
 def build_tools(integrations: dict) -> list:
     tools = list(BASE_TOOLS)
@@ -947,6 +1010,14 @@ BASE_SYSTEM_PROMPT = """You are AnaModel, a highly capable AI assistant. You com
 - Task with clear steps (create, update, send, find, build) → plan and execute using tools
 - You can switch mid-conversation — start chatting then take action when asked
 
+**Connecting services:**
+Users do NOT need a sidebar or settings page. They just paste their token or API key in chat:
+  "My GitHub token is ghp_xxx, show me my repos"
+  "Stripe key: sk_live_xxx — any failed payments?"
+  "Here's my Supabase URL and key: ..."
+If a user asks how to connect a service, tell them to paste their key/token directly in the message.
+If credentials were already provided earlier in the conversation, use them — do not ask again.
+
 **Quality rules:**
 - Never make up facts, prices, news, or data — use tools to verify
 - Be honest when you don't know something or when a tool fails
@@ -1000,7 +1071,7 @@ def _run_tool_loop(messages, model, max_tokens, tools, integrations):
     return messages
 
 def run_agent(messages, model=DEFAULT_MODEL, max_tokens=1024, integrations=None):
-    integrations = integrations or {}
+    integrations = {**extract_credentials_from_messages(messages), **(integrations or {})}
     tools = build_tools(integrations)
     messages = _prepare_messages(messages, integrations)
     messages = _run_tool_loop(messages, model, max_tokens, tools, integrations)
@@ -1052,8 +1123,9 @@ def run_agent_stream(messages, model=DEFAULT_MODEL, max_tokens=1024, integration
     """
     Unified streaming agent: handles simple chat, web search, and multi-step goal execution
     all in one. Streams tool progress in real-time so the user sees what's happening.
+    Credentials pasted inline in messages are auto-detected and merged with any explicit integrations.
     """
-    integrations = integrations or {}
+    integrations = {**extract_credentials_from_messages(messages), **(integrations or {})}
     tools = build_tools(integrations)
     cid = f"chatcmpl-{uuid.uuid4().hex[:12]}"
     created = int(time.time())
@@ -1122,7 +1194,7 @@ def run_agent_stream(messages, model=DEFAULT_MODEL, max_tokens=1024, integration
 
 def run_goal_stream(goal: str, integrations: dict = None, model: str = DEFAULT_MODEL, max_tokens: int = 2048):
     """Goal-oriented agent: plans then executes, streaming progress at each step."""
-    integrations = integrations or {}
+    integrations = {**extract_credentials_from_messages([{"role": "user", "content": goal}]), **(integrations or {})}
     tools = build_tools(integrations)
     cid = f"chatcmpl-{uuid.uuid4().hex[:12]}"
     created = int(time.time())
