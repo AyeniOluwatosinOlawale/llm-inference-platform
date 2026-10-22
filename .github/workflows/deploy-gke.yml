@@ -103,7 +103,11 @@ jobs:
       - name: Deploy vLLM
         if: contains(steps.changes.outputs.component, 'vllm') || steps.changes.outputs.component == 'all'
         run: |
-          find k8s/vllm -name '*.yaml' | xargs -I{} kubectl apply -f {}
+          # Skip Argo Rollouts manifests (not installed on this cluster)
+          find k8s/vllm -name '*.yaml' \
+            ! -name 'rollout.yaml' \
+            ! -name 'analysis-template.yaml' \
+            | xargs -I{} kubectl apply -f {}
           kubectl rollout status deployment -n llm-serving -l engine=vllm --timeout=600s || true
 
       - name: Deploy SGLang
