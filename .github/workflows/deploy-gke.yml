@@ -6,6 +6,7 @@ on:
     paths:
       - 'k8s/**'
       - 'examples/agent_server.py'
+      - 'examples/chat_ui.html'
   workflow_dispatch:
     inputs:
       component:
@@ -68,7 +69,8 @@ jobs:
               echo "$CHANGED" | grep -q "^k8s/base/"             && COMP="base"
               echo "$CHANGED" | grep -q "^k8s/litellm/"          && COMP="${COMP},litellm"
               echo "$CHANGED" | grep -q "^k8s/agent-server/"     && COMP="${COMP},agent"
-              echo "$CHANGED" | grep -q "^examples/agent_server.py" && COMP="${COMP},agent"
+              echo "$CHANGED" | grep -q "^examples/agent_server.py"  && COMP="${COMP},agent"
+              echo "$CHANGED" | grep -q "^examples/chat_ui.html"     && COMP="${COMP},agent"
               echo "$CHANGED" | grep -q "^k8s/monitoring/"       && COMP="${COMP},monitoring"
               echo "$CHANGED" | grep -q "^k8s/vllm/"             && COMP="${COMP},vllm"
               echo "$CHANGED" | grep -q "^k8s/sglang/"           && COMP="${COMP},sglang"
@@ -130,6 +132,7 @@ jobs:
         run: |
           kubectl create configmap anamodel-agent-code \
             --from-file=agent_server.py=examples/agent_server.py \
+            --from-file=chat_ui.html=examples/chat_ui.html \
             --namespace llm-gateway \
             --dry-run=client -o yaml | kubectl apply -f -
           kubectl apply -f k8s/agent-server/deployment.yaml
