@@ -269,63 +269,52 @@ Hourly forecast:
         return f"Weather error: {e}"
 
 
-def _search_bing(query: str, num_results: int) -> str:
-    """Bing web search — no API key needed."""
+def _search_google_news(query: str, num_results: int = 8) -> str:
+    """Google News RSS search — free, no key, works for any topic or country."""
+    import html as htmllib
     encoded = urllib.parse.quote_plus(query)
-    url = f"https://www.bing.com/search?q={encoded}&count={num_results}"
-    req = urllib.request.Request(url, headers={
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html",
-        "Accept-Language": "en-US,en;q=0.9",
-    })
+    url = f"https://news.google.com/rss/search?q={encoded}&hl=en&gl=US&ceid=US:en"
+    req = urllib.request.Request(url, headers={"User-Agent": "AnaModel/1.0"})
     with urllib.request.urlopen(req, timeout=10) as r:
-        html = r.read().decode("utf-8", errors="replace")
-
-    results = []
-    # Each Bing result is in <li class="b_algo">
-    blocks = re.findall(r'<li class="b_algo"(.*?)</li>', html, re.DOTALL)
-    for block in blocks[:num_results]:
-        h2 = re.search(r'<h2[^>]*>.*?<a[^>]+href="(https?://[^"]+)"[^>]*>(.*?)</a>', block, re.DOTALL)
-        snip = re.search(r'<p[^>]*class="[^"]*b_[^"]*"[^>]*>(.*?)</p>|<p>(.*?)</p>', block, re.DOTALL)
-        if h2:
-            link = h2.group(1)
-            title = re.sub(r"<[^>]+>", "", h2.group(2)).strip()
-            snippet = ""
-            if snip:
-                snippet = re.sub(r"<[^>]+>", "", (snip.group(1) or snip.group(2) or "")).strip()
-            import html as htmllib
-            title = htmllib.unescape(title)
-            snippet = htmllib.unescape(snippet)
-            if title:
-                results.append(f"**{title}**\n{link}\n{snippet}")
-    return "\n\n---\n\n".join(results)
-
-
-def _get_news(topic: str = "") -> str:
-    """Latest news from BBC RSS — free, no key."""
-    feeds = {
-        "technology": "https://feeds.bbci.co.uk/news/technology/rss.xml",
-        "business": "https://feeds.bbci.co.uk/news/business/rss.xml",
-        "sports": "https://feeds.bbci.co.uk/sport/rss.xml",
-        "science": "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml",
-        "world": "https://feeds.bbci.co.uk/news/world/rss.xml",
-    }
-    feed_url = feeds.get(topic.lower().strip(), "https://feeds.bbci.co.uk/news/rss.xml")
-    req = urllib.request.Request(feed_url, headers={"User-Agent": "AnaModel/1.0"})
-    with urllib.request.urlopen(req, timeout=8) as r:
         content = r.read().decode("utf-8", errors="replace")
     items = re.findall(r"<item>(.*?)</item>", content, re.DOTALL)
     results = []
-    for item in items[:8]:
-        title_m = re.search(r"<title><!\[CDATA\[(.*?)\]\]>|<title>(.*?)</title>", item, re.DOTALL)
-        desc_m = re.search(r"<description><!\[CDATA\[(.*?)\]\]>|<description>(.*?)</description>", item, re.DOTALL)
-        link_m = re.search(r"<link>(.*?)</link>", item)
+    for item in items[:num_results]:
+        title_m = re.search(r"<title>(.*?)</title>", item, re.DOTALL)
+        desc_m  = re.search(r"<description>(.*?)</description>", item, re.DOTALL)
+        link_m  = re.search(r"<link>(.*?)</link>", item)
+        pub_m   = re.search(r"<pubDate>(.*?)</pubDate>", item)
         if title_m:
-            title = (title_m.group(1) or title_m.group(2) or "").strip()
-            desc = (desc_m.group(1) or desc_m.group(2) or "").strip() if desc_m else ""
-            link = link_m.group(1).strip() if link_m else ""
-            results.append(f"• **{title}**\n  {desc[:150]}")
-    return f"Latest news (BBC):\n\n" + "\n\n".join(results) if results else "No news found."
+            title = htmllib.unescape(re.sub(r"<[^>]+>", "", title_m.group(1))).strip()
+            desc  = htmllib.unescape(re.sub(r"<[^>]+>", "", (desc_m.group(1) if desc_m else ""))).strip()
+            pub   = pub_m.group(1).strip() if pub_m else ""
+            # Title from Google News includes "- Source" at the end — keep it for attribution
+            line = f"**{title}**"
+            if pub:
+                line += f" ({pub[:16]})"
+            if desc and desc != title:
+                line += f"\n  {desc[:200]}"
+            results.append(line)
+    return "\n\n".join(results) if results else ""
+
+
+def _get_news(topic: str = "") -> str:
+    """Latest news via Google News RSS — covers any country, topic, or keyword."""
+    # Map common topics to better search queries
+    topic_queries = {
+        "technology": "technology news",
+        "business": "business finance news",
+        "sports": "sports news",
+        "science": "science news",
+        "world": "world news",
+        "nigeria": "Nigeria news today",
+        "uk": "UK news today",
+        "us": "United States news today",
+        "africa": "Africa news today",
+    }
+    query = topic_queries.get(topic.lower().strip(), topic if topic else "top news today")
+    results = _search_google_news(query, num_results=10)
+    return f"Latest news for '{query}':\n\n{results}" if results else "No news found."
 
 
 def _get_crypto_price(coins: str) -> str:
@@ -348,7 +337,7 @@ def _get_crypto_price(coins: str) -> str:
 
 
 def _web_search(query: str, num_results: int = 5) -> str:
-    """Multi-source search: Tavily → Bing → Wikipedia + DDG Instant Answers."""
+    """Multi-source search: Tavily → Google News RSS → Wikipedia + DDG Instant Answers."""
     # Primary: Tavily (best quality, needs API key)
     if TAVILY_API_KEY:
         try:
@@ -358,11 +347,11 @@ def _web_search(query: str, num_results: int = 5) -> str:
         except Exception:
             pass
 
-    # Secondary: Bing web search
+    # Secondary: Google News RSS (free, reliable, real-time)
     try:
-        bing = _search_bing(query, num_results)
-        if bing:
-            return bing
+        gnews = _search_google_news(query, num_results)
+        if gnews:
+            return gnews
     except Exception:
         pass
 
