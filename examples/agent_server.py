@@ -1144,31 +1144,23 @@ def run_agent_stream(messages, model=DEFAULT_MODEL, max_tokens=1024, integration
         msg = response.choices[0].message
         finish = response.choices[0].finish_reason
 
-        # Stream any text the model produced before tool calls
-        if msg.content:
-            clean = re.sub(r"<think>.*?</think>", "", msg.content, flags=re.DOTALL).strip()
-            if clean:
-                yield _chunk(clean + "\n\n")
-
-        # No tool calls — stream final answer
+        # No tool calls — stream final answer token by token (always, regardless of step)
         if finish == "stop" or not msg.tool_calls:
-            if step == 0:
-                # Simple answer with no tools — re-stream properly via streaming call
-                stream = client.chat.completions.create(
-                    model=model, messages=messages, tools=tools,
-                    tool_choice="none", max_tokens=max_tokens, temperature=0.1, stream=True,
-                )
-                for chunk in stream:
-                    token = chunk.choices[0].delta.content or ""
-                    if not in_think and "<think>" in token:
-                        in_think = True; token = token.split("<think>")[0]
-                    if in_think:
-                        think_buf += token
-                        if "</think>" in think_buf:
-                            in_think = False; token = think_buf.split("</think>", 1)[1]; think_buf = ""
-                        else: continue
-                    if token:
-                        yield _chunk(token)
+            stream = client.chat.completions.create(
+                model=model, messages=messages, tools=tools,
+                tool_choice="none", max_tokens=max_tokens, temperature=0.1, stream=True,
+            )
+            for chunk in stream:
+                token = chunk.choices[0].delta.content or ""
+                if not in_think and "<think>" in token:
+                    in_think = True; token = token.split("<think>")[0]
+                if in_think:
+                    think_buf += token
+                    if "</think>" in think_buf:
+                        in_think = False; token = think_buf.split("</think>", 1)[1]; think_buf = ""
+                    else: continue
+                if token:
+                    yield _chunk(token)
             break
 
         # Execute tool calls — show progress to user
