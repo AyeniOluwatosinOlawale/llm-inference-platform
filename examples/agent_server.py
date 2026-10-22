@@ -954,12 +954,12 @@ def _describe_tool_call(name: str, args: dict) -> str:
     descriptions = {
         "stripe_create_refund": lambda a: f"Stripe refund of ${int(a.get('amount',0))/100:.2f} on payment {a.get('payment_intent_id','')}",
         "supabase_update":      lambda a: f"Supabase UPDATE on table `{a.get('table','')}` WHERE {a.get('filter','')}",
-        "slack_send_message":   lambda a: f"Slack message to #{a.get('channel','')} — "{a.get('message','')[:60]}"",
-        "send_email":           lambda a: f"Email to {a.get('to','')} — "{a.get('subject','')}"",
-        "send_sms":             lambda a: f"SMS to {a.get('to','')} — "{a.get('message','')[:60]}"",
-        "supabase_insert":      lambda a: f"Supabase INSERT into `{a.get('table','')}` — {list(a.get('data',{}).keys())}",
-        "github_create_issue":  lambda a: f"GitHub issue on {a.get('repo','')} — "{a.get('title','')}"",
-        "github_create_pr":     lambda a: f"GitHub PR on {a.get('repo','')} — "{a.get('title','')}"",
+        "slack_send_message":   lambda a: f"Slack message to #{a.get('channel','')} -- '{a.get('message','')[:60]}'",
+        "send_email":           lambda a: f"Email to {a.get('to','')} -- subject: '{a.get('subject','')}'",
+        "send_sms":             lambda a: f"SMS to {a.get('to','')} -- '{a.get('message','')[:60]}'",
+        "supabase_insert":      lambda a: f"Supabase INSERT into `{a.get('table','')}` -- {list(a.get('data',{}).keys())}",
+        "github_create_issue":  lambda a: f"GitHub issue on {a.get('repo','')} -- '{a.get('title','')}'",
+        "github_create_pr":     lambda a: f"GitHub PR on {a.get('repo','')} -- '{a.get('title','')}'",
         "api_call":             lambda a: f"HTTP {a.get('method','?')} {a.get('url','')}",
     }
     fn = descriptions.get(name)
