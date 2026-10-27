@@ -1,0 +1,301 @@
+apiVersion: v1
+items:
+- apiVersion: keda.sh/v1alpha1
+  kind: ScaledObject
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"keda.sh/v1alpha1","kind":"ScaledObject","metadata":{"annotations":{},"name":"sglang-llama3-scaler","namespace":"llm-serving"},"spec":{"cooldownPeriod":300,"maxReplicaCount":4,"minReplicaCount":1,"pollingInterval":30,"scaleTargetRef":{"name":"sglang-llama3"},"triggers":[{"metadata":{"metricName":"sglang_num_queue_reqs_llama3","query":"sum(sglang:num_queue_reqs{model_name=\"llama3-sglang\"})","serverAddress":"http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090","threshold":"5"},"type":"prometheus"},{"metadata":{"metricName":"sglang_gpu_cache_usage_llama3","query":"avg(sglang:gpu_cache_usage_perc{model_name=\"llama3-sglang\"}) * 100","serverAddress":"http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090","threshold":"80"},"type":"prometheus"}]}}
+    creationTimestamp: "2026-10-22T11:03:23Z"
+    finalizers:
+    - finalizer.keda.sh
+    generation: 2
+    labels:
+      scaledobject.keda.sh/name: sglang-llama3-scaler
+    name: sglang-llama3-scaler
+    namespace: llm-serving
+    resourceVersion: "1793080538081919013"
+    uid: 357ba686-e036-4fa9-97b1-cd7defe0b152
+  spec:
+    cooldownPeriod: 300
+    maxReplicaCount: 4
+    minReplicaCount: 0
+    pollingInterval: 30
+    scaleTargetRef:
+      name: sglang-llama3
+    triggers:
+    - metadata:
+        metricName: sglang_num_queue_reqs_llama3
+        query: sum(sglang:num_queue_reqs{model_name="llama3-sglang"})
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        threshold: "5"
+      type: prometheus
+    - metadata:
+        metricName: sglang_gpu_cache_usage_llama3
+        query: avg(sglang:gpu_cache_usage_perc{model_name="llama3-sglang"}) * 100
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        threshold: "80"
+      type: prometheus
+  status:
+    authenticationsTypes: ""
+    conditions:
+    - message: ScaledObject is defined correctly and is ready for scaling
+      reason: ScaledObjectReady
+      status: "True"
+      type: Ready
+    - message: Scaling is not performed because triggers are not active
+      reason: ScalerNotActive
+      status: "False"
+      type: Active
+    - message: No fallbacks are active on this scaled object
+      reason: NoFallbackFound
+      status: "False"
+      type: Fallback
+    - status: "False"
+      type: Paused
+    - message: scaling is disabled since the replica count of the target is zero
+      reason: ScalingDisabled
+      status: "True"
+      type: HPAActive
+    externalMetricNames:
+    - s0-prometheus
+    - s1-prometheus
+    hpaName: keda-hpa-sglang-llama3-scaler
+    originalReplicaCount: 1
+    scaleTargetGVKR:
+      group: apps
+      kind: Deployment
+      resource: deployments
+      version: v1
+    scaleTargetKind: apps/v1.Deployment
+    triggersActivity:
+      s0-prometheus:
+        isActive: false
+      s1-prometheus:
+        isActive: false
+    triggersTypes: prometheus
+- apiVersion: keda.sh/v1alpha1
+  kind: ScaledObject
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"keda.sh/v1alpha1","kind":"ScaledObject","metadata":{"annotations":{},"name":"sglang-qwen3-scaler","namespace":"llm-serving"},"spec":{"cooldownPeriod":300,"maxReplicaCount":4,"minReplicaCount":1,"pollingInterval":30,"scaleTargetRef":{"name":"sglang-qwen3"},"triggers":[{"metadata":{"metricName":"sglang_num_queue_reqs_qwen3","query":"sum(sglang:num_queue_reqs{model_name=\"qwen3-sglang\"})","serverAddress":"http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090","threshold":"5"},"type":"prometheus"},{"metadata":{"metricName":"sglang_gpu_cache_usage_qwen3","query":"avg(sglang:gpu_cache_usage_perc{model_name=\"qwen3-sglang\"}) * 100","serverAddress":"http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090","threshold":"80"},"type":"prometheus"}]}}
+    creationTimestamp: "2026-10-22T11:03:21Z"
+    finalizers:
+    - finalizer.keda.sh
+    generation: 2
+    labels:
+      scaledobject.keda.sh/name: sglang-qwen3-scaler
+    name: sglang-qwen3-scaler
+    namespace: llm-serving
+    resourceVersion: "1793080538071743015"
+    uid: ebd1a41f-68a2-4daf-8a37-00cc59ec1c35
+  spec:
+    cooldownPeriod: 300
+    maxReplicaCount: 4
+    minReplicaCount: 0
+    pollingInterval: 30
+    scaleTargetRef:
+      name: sglang-qwen3
+    triggers:
+    - metadata:
+        metricName: sglang_num_queue_reqs_qwen3
+        query: sum(sglang:num_queue_reqs{model_name="qwen3-sglang"})
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        threshold: "5"
+      type: prometheus
+    - metadata:
+        metricName: sglang_gpu_cache_usage_qwen3
+        query: avg(sglang:gpu_cache_usage_perc{model_name="qwen3-sglang"}) * 100
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        threshold: "80"
+      type: prometheus
+  status:
+    authenticationsTypes: ""
+    conditions:
+    - message: ScaledObject is defined correctly and is ready for scaling
+      reason: ScaledObjectReady
+      status: "True"
+      type: Ready
+    - message: Scaling is not performed because triggers are not active
+      reason: ScalerNotActive
+      status: "False"
+      type: Active
+    - message: No fallbacks are active on this scaled object
+      reason: NoFallbackFound
+      status: "False"
+      type: Fallback
+    - status: "False"
+      type: Paused
+    - message: scaling is disabled since the replica count of the target is zero
+      reason: ScalingDisabled
+      status: "True"
+      type: HPAActive
+    externalMetricNames:
+    - s0-prometheus
+    - s1-prometheus
+    hpaName: keda-hpa-sglang-qwen3-scaler
+    originalReplicaCount: 1
+    scaleTargetGVKR:
+      group: apps
+      kind: Deployment
+      resource: deployments
+      version: v1
+    scaleTargetKind: apps/v1.Deployment
+    triggersActivity:
+      s0-prometheus:
+        isActive: false
+      s1-prometheus:
+        isActive: false
+    triggersTypes: prometheus
+- apiVersion: keda.sh/v1alpha1
+  kind: ScaledObject
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"keda.sh/v1alpha1","kind":"ScaledObject","metadata":{"annotations":{},"name":"vllm-llama3-scaler","namespace":"llm-serving"},"spec":{"cooldownPeriod":300,"maxReplicaCount":4,"minReplicaCount":1,"pollingInterval":30,"scaleTargetRef":{"name":"vllm-llama3"},"triggers":[{"metadata":{"metricName":"vllm_num_requests_waiting_llama3","query":"sum(vllm:num_requests_waiting{model_name=\"llama3\"})","serverAddress":"http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090","threshold":"5"},"type":"prometheus"},{"metadata":{"metricName":"vllm_gpu_cache_usage_llama3","query":"avg(vllm:gpu_cache_usage_perc{model_name=\"llama3\"}) * 100","serverAddress":"http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090","threshold":"80"},"type":"prometheus"}]}}
+    creationTimestamp: "2026-10-22T10:58:44Z"
+    finalizers:
+    - finalizer.keda.sh
+    generation: 2
+    labels:
+      scaledobject.keda.sh/name: vllm-llama3-scaler
+    name: vllm-llama3-scaler
+    namespace: llm-serving
+    resourceVersion: "1793080538100095012"
+    uid: 72440b2e-0a08-4622-9266-d81f41b0532b
+  spec:
+    cooldownPeriod: 300
+    maxReplicaCount: 4
+    minReplicaCount: 0
+    pollingInterval: 30
+    scaleTargetRef:
+      name: vllm-llama3
+    triggers:
+    - metadata:
+        metricName: vllm_num_requests_waiting_llama3
+        query: sum(vllm:num_requests_waiting{model_name="llama3"})
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        threshold: "5"
+      type: prometheus
+    - metadata:
+        metricName: vllm_gpu_cache_usage_llama3
+        query: avg(vllm:gpu_cache_usage_perc{model_name="llama3"}) * 100
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        threshold: "80"
+      type: prometheus
+  status:
+    authenticationsTypes: ""
+    conditions:
+    - message: ScaledObject is defined correctly and is ready for scaling
+      reason: ScaledObjectReady
+      status: "True"
+      type: Ready
+    - message: Scaling is not performed because triggers are not active
+      reason: ScalerNotActive
+      status: "False"
+      type: Active
+    - message: No fallbacks are active on this scaled object
+      reason: NoFallbackFound
+      status: "False"
+      type: Fallback
+    - status: "False"
+      type: Paused
+    - message: scaling is disabled since the replica count of the target is zero
+      reason: ScalingDisabled
+      status: "True"
+      type: HPAActive
+    externalMetricNames:
+    - s0-prometheus
+    - s1-prometheus
+    hpaName: keda-hpa-vllm-llama3-scaler
+    originalReplicaCount: 1
+    scaleTargetGVKR:
+      group: apps
+      kind: Deployment
+      resource: deployments
+      version: v1
+    scaleTargetKind: apps/v1.Deployment
+    triggersActivity:
+      s0-prometheus:
+        isActive: false
+      s1-prometheus:
+        isActive: false
+    triggersTypes: prometheus
+- apiVersion: keda.sh/v1alpha1
+  kind: ScaledObject
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"keda.sh/v1alpha1","kind":"ScaledObject","metadata":{"annotations":{},"name":"vllm-qwen3-scaler","namespace":"llm-serving"},"spec":{"cooldownPeriod":300,"maxReplicaCount":4,"minReplicaCount":1,"pollingInterval":30,"scaleTargetRef":{"name":"vllm-qwen3"},"triggers":[{"metadata":{"metricName":"vllm_num_requests_waiting_qwen3","query":"sum(vllm:num_requests_waiting{model_name=\"qwen3\"})","serverAddress":"http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090","threshold":"5"},"type":"prometheus"},{"metadata":{"metricName":"vllm_gpu_cache_usage_qwen3","query":"avg(vllm:gpu_cache_usage_perc{model_name=\"qwen3\"}) * 100","serverAddress":"http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090","threshold":"80"},"type":"prometheus"}]}}
+    creationTimestamp: "2026-10-22T04:29:58Z"
+    finalizers:
+    - finalizer.keda.sh
+    generation: 1
+    labels:
+      scaledobject.keda.sh/name: vllm-qwen3-scaler
+    name: vllm-qwen3-scaler
+    namespace: llm-serving
+    resourceVersion: "1793080538095519023"
+    uid: 2c30f461-2109-42be-ab88-e6ee3fd50f60
+  spec:
+    cooldownPeriod: 300
+    maxReplicaCount: 4
+    minReplicaCount: 1
+    pollingInterval: 30
+    scaleTargetRef:
+      name: vllm-qwen3
+    triggers:
+    - metadata:
+        metricName: vllm_num_requests_waiting_qwen3
+        query: sum(vllm:num_requests_waiting{model_name="qwen3"})
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        threshold: "5"
+      type: prometheus
+    - metadata:
+        metricName: vllm_gpu_cache_usage_qwen3
+        query: avg(vllm:gpu_cache_usage_perc{model_name="qwen3"}) * 100
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        threshold: "80"
+      type: prometheus
+  status:
+    authenticationsTypes: ""
+    conditions:
+    - message: ScaledObject is defined correctly and is ready for scaling
+      reason: ScaledObjectReady
+      status: "True"
+      type: Ready
+    - message: Scaling is not performed because triggers are not active
+      reason: ScalerNotActive
+      status: "False"
+      type: Active
+    - message: No fallbacks are active on this scaled object
+      reason: NoFallbackFound
+      status: "False"
+      type: Fallback
+    - status: "False"
+      type: Paused
+    - message: HPA is actively scaling
+      reason: HPAActive
+      status: "True"
+      type: HPAActive
+    externalMetricNames:
+    - s0-prometheus
+    - s1-prometheus
+    hpaName: keda-hpa-vllm-qwen3-scaler
+    originalReplicaCount: 1
+    scaleTargetGVKR:
+      group: apps
+      kind: Deployment
+      resource: deployments
+      version: v1
+    scaleTargetKind: apps/v1.Deployment
+    triggersActivity:
+      s0-prometheus:
+        isActive: false
+      s1-prometheus:
+        isActive: false
+    triggersTypes: prometheus
+kind: List
+metadata:
+  resourceVersion: ""

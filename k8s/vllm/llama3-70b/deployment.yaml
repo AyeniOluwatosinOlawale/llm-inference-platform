@@ -72,7 +72,7 @@ spec:
 
       containers:
         - name: vllm
-          image: vllm/vllm-openai:v0.30.0
+          image: vllm/vllm-openai:v0.32.0
           command:
             - python
             - -m

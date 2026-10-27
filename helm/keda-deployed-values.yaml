@@ -1,0 +1,19 @@
+USER-SUPPLIED VALUES:
+logging:
+  format: json
+  level: info
+prometheus:
+  operator:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: monitoring
+replicaCount: 1
+resources:
+  operator:
+    limits:
+      cpu: 500m
+      memory: 500Mi
+    requests:
+      cpu: 100m
+      memory: 100Mi

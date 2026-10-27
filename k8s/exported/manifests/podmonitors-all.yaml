@@ -1,0 +1,30 @@
+apiVersion: v1
+items:
+- apiVersion: monitoring.coreos.com/v1
+  kind: PodMonitor
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"monitoring.coreos.com/v1","kind":"PodMonitor","metadata":{"annotations":{},"labels":{"release":"kube-prometheus-stack"},"name":"dcgm-exporter","namespace":"monitoring"},"spec":{"namespaceSelector":{"matchNames":["gke-managed-system"]},"podMetricsEndpoints":[{"interval":"30s","path":"/metrics","port":"metrics"}],"selector":{"matchLabels":{"app.kubernetes.io/name":"gke-managed-dcgm-exporter"}}}}
+    creationTimestamp: "2026-10-24T13:29:02Z"
+    generation: 1
+    labels:
+      release: kube-prometheus-stack
+    name: dcgm-exporter
+    namespace: monitoring
+    resourceVersion: "1792848542255599019"
+    uid: 5df61fd3-0a34-49c5-9a7f-7d7af3d06aa7
+  spec:
+    namespaceSelector:
+      matchNames:
+      - gke-managed-system
+    podMetricsEndpoints:
+    - interval: 30s
+      path: /metrics
+      port: metrics
+    selector:
+      matchLabels:
+        app.kubernetes.io/name: gke-managed-dcgm-exporter
+kind: List
+metadata:
+  resourceVersion: ""

@@ -38,7 +38,7 @@ spec:
 
       initContainers:
         - name: model-pull
-          image: huggingface/downloader:latest
+          image: lmsysorg/sglang:v0.5.22-cu130
           command:
             - sh
             - -c
@@ -63,7 +63,7 @@ spec:
 
       containers:
         - name: sglang
-          image: lmsysorg/sglang:v0.5.20-cu121
+          image: lmsysorg/sglang:v0.5.22-cu130
           command:
             - python
             - -m

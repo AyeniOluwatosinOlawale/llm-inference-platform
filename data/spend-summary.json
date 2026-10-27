@@ -1,0 +1,25 @@
+{
+  "export_date": "2026-10-27",
+  "cluster": "llm-inference",
+  "project": "testing-494308",
+  "total_requests": 723,
+  "total_tokens": 1256669,
+  "prompt_tokens": 1122571,
+  "completion_tokens": 134098,
+  "total_spend_usd": 0.245517,
+  "models_served": ["qwen3"],
+  "engines_used": ["vllm"],
+  "daily_breakdown": [
+    {"date": "2026-10-22", "requests": 199, "total_tokens": 265508, "spend_usd": 0.050166},
+    {"date": "2026-10-23", "requests": 214, "total_tokens": 459238, "spend_usd": 0.090514},
+    {"date": "2026-10-24", "requests": 269, "total_tokens": 467589, "spend_usd": 0.092299},
+    {"date": "2026-10-25", "requests": 17, "total_tokens": 21802, "spend_usd": 0.004032},
+    {"date": "2026-10-26", "requests": 17, "total_tokens": 27351, "spend_usd": 0.005470},
+    {"date": "2026-10-27", "requests": 7, "total_tokens": 15181, "spend_usd": 0.003036}
+  ],
+  "infrastructure_cost_usd": 152.82,
+  "cluster_days": 5.3,
+  "cost_per_day_usd": 28.74,
+  "gpu_node": "g2-standard-8 (NVIDIA L4 24GB)",
+  "region": "us-central1"
+}

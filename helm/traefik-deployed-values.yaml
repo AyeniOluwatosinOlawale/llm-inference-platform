@@ -1,0 +1,37 @@
+USER-SUPPLIED VALUES:
+deployment:
+  replicas: 2
+ingressRoute:
+  dashboard:
+    enabled: false
+persistence:
+  enabled: true
+  size: 1Gi
+ports:
+  web:
+    expose:
+      default: true
+    exposedPort: 80
+    port: 8000
+    protocol: TCP
+  websecure:
+    expose:
+      default: true
+    exposedPort: 443
+    port: 8443
+    protocol: TCP
+providers:
+  kubernetesCRD:
+    allowCrossNamespace: true
+    enabled: true
+  kubernetesIngress:
+    enabled: true
+    publishedService:
+      enabled: true
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 64Mi

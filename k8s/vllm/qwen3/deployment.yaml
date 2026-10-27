@@ -8,6 +8,8 @@ metadata:
     model: qwen3
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: vllm-qwen3
@@ -36,18 +38,28 @@ spec:
 
       initContainers:
         - name: model-pull
-          image: huggingface/downloader:latest
+          image: python:3.11-slim
           command:
             - sh
             - -c
             - |
-              if [ -d /models/qwen3 ]; then
+              if [ -f /models/qwen3/model-00005-of-00005.safetensors ]; then
                 echo "Model cache hit — skipping download"
                 exit 0
               fi
-              huggingface-cli download \
-                Qwen/Qwen3-8B-Instruct \
-                --local-dir /models/qwen3
+              rm -rf /models/qwen3
+              pip install -q huggingface-hub
+              python3 -c "
+              from huggingface_hub import snapshot_download
+              snapshot_download('Qwen/Qwen3-8B', local_dir='/models/qwen3')
+              print('Download complete')
+              "
+          env:
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token
+                  key: HF_TOKEN
           volumeMounts:
             - name: model-cache
               mountPath: /models
@@ -58,9 +70,9 @@ spec:
 
       containers:
         - name: vllm
-          image: vllm/vllm-openai:v0.30.0
+          image: vllm/vllm-openai:v0.32.0
           command:
-            - python
+            - python3
             - -m
             - vllm.entrypoints.openai.api_server
           args:
@@ -68,13 +80,13 @@ spec:
             # FIX #1: label matches KEDA ScaledObject trigger query model_name="qwen3"
             - --served-model-name=qwen3
             # fp8 reduces VRAM to ~8 GB on Qwen3-8B, freeing headroom for KV cache.
-            # Note: fp8 compute is most efficient on H100/L4; on RTX 4090 it falls
-            # back to fp16 compute with fp8 storage — still reduces peak VRAM.
             - --quantization=fp8
             - --max-model-len=8192
             - --gpu-memory-utilization=0.90
             - --enable-prefix-caching
             - --tensor-parallel-size=1
+            - --enable-auto-tool-choice
+            - --tool-call-parser=hermes
             - --port=8000
             - --host=0.0.0.0
           ports:
@@ -140,9 +152,8 @@ spec:
 
       volumes:
         - name: model-cache
-          hostPath:
-            path: /var/lib/models
-            type: DirectoryOrCreate
+          persistentVolumeClaim:
+            claimName: model-cache-qwen3
         - name: shm
           emptyDir:
             medium: Memory

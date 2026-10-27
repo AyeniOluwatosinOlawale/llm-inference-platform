@@ -1,0 +1,803 @@
+apiVersion: v1
+items:
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "3"
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"sglang-llama3","engine":"sglang","model":"llama3"},"name":"sglang-llama3","namespace":"llm-serving"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"sglang-llama3"}},"template":{"metadata":{"annotations":{"prometheus.io/path":"/metrics","prometheus.io/port":"30000","prometheus.io/scrape":"true"},"labels":{"app":"sglang-llama3","engine":"sglang","model":"llama3"}},"spec":{"containers":[{"args":["--model-path=/models/llama3","--served-model-name=llama3-sglang","--quantization=awq","--context-length=8192","--mem-fraction-static=0.88","--enable-prefix-caching","--tp=1","--port=30000","--host=0.0.0.0","--enable-metrics"],"command":["python","-m","sglang.launch_server"],"env":[{"name":"CUDA_VISIBLE_DEVICES","value":"0"}],"image":"lmsysorg/sglang:v0.5.20-cu121","lifecycle":{"postStart":{"exec":{"command":["sh","-c","sleep 5\ncurl -sf http://localhost:30000/v1/completions \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"model\":\"llama3-sglang\",\"prompt\":\"Hello\",\"max_tokens\":1}' || true\n"]}},"preStop":{"exec":{"command":["sleep","60"]}}},"livenessProbe":{"failureThreshold":3,"httpGet":{"path":"/health","port":30000},"periodSeconds":30},"name":"sglang","ports":[{"containerPort":30000,"name":"http"}],"readinessProbe":{"failureThreshold":3,"httpGet":{"path":"/health","port":30000},"periodSeconds":10},"resources":{"limits":{"cpu":"8","memory":"24Gi","nvidia.com/gpu":"1"},"requests":{"cpu":"4","memory":"16Gi"}},"startupProbe":{"failureThreshold":40,"httpGet":{"path":"/health","port":30000},"periodSeconds":15},"volumeMounts":[{"mountPath":"/models","name":"model-cache"},{"mountPath":"/dev/shm","name":"shm"}]}],"initContainers":[{"command":["sh","-c","if [ -d /models/llama3 ]; then\n  echo \"Model cache hit — skipping download\"\n  exit 0\nfi\nhuggingface-cli download \\\n  meta-llama/Meta-Llama-3.1-8B-Instruct-AWQ \\\n  --local-dir /models/llama3 \\\n  --token \"$HF_TOKEN\"\n"],"env":[{"name":"HF_TOKEN","valueFrom":{"secretKeyRef":{"key":"HUGGINGFACE_TOKEN","name":"platform-secrets"}}}],"image":"huggingface/downloader:latest","name":"model-pull","resources":{"limits":{"cpu":"4","memory":"8Gi"},"requests":{"cpu":"2","memory":"4Gi"}},"volumeMounts":[{"mountPath":"/models","name":"model-cache"}]}],"terminationGracePeriodSeconds":120,"tolerations":[{"effect":"NoSchedule","key":"nvidia.com/gpu","operator":"Exists"}],"topologySpreadConstraints":[{"labelSelector":{"matchLabels":{"app":"sglang-llama3"}},"maxSkew":1,"topologyKey":"kubernetes.io/hostname","whenUnsatisfiable":"DoNotSchedule"}],"volumes":[{"hostPath":{"path":"/var/lib/models","type":"DirectoryOrCreate"},"name":"model-cache"},{"emptyDir":{"medium":"Memory","sizeLimit":"8Gi"},"name":"shm"}]}}}}
+    creationTimestamp: "2026-10-22T11:03:24Z"
+    generation: 4
+    labels:
+      app: sglang-llama3
+      engine: sglang
+      model: llama3
+    name: sglang-llama3
+    namespace: llm-serving
+    resourceVersion: "1792838173168847014"
+    uid: a0d8a5d5-4405-482a-995a-df71afe8b4a0
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 0
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: sglang-llama3
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          prometheus.io/path: /metrics
+          prometheus.io/port: "30000"
+          prometheus.io/scrape: "true"
+        labels:
+          app: sglang-llama3
+          engine: sglang
+          model: llama3
+      spec:
+        containers:
+        - args:
+          - --model-path=/models/llama3
+          - --served-model-name=llama3-sglang
+          - --quantization=awq
+          - --context-length=8192
+          - --mem-fraction-static=0.88
+          - --enable-prefix-caching
+          - --tp=1
+          - --port=30000
+          - --host=0.0.0.0
+          - --enable-metrics
+          command:
+          - python
+          - -m
+          - sglang.launch_server
+          env:
+          - name: CUDA_VISIBLE_DEVICES
+            value: "0"
+          image: lmsysorg/sglang:v0.5.20-cu121
+          imagePullPolicy: IfNotPresent
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                - sh
+                - -c
+                - |
+                  sleep 5
+                  curl -sf http://localhost:30000/v1/completions \
+                    -H "Content-Type: application/json" \
+                    -d '{"model":"llama3-sglang","prompt":"Hello","max_tokens":1}' || true
+            preStop:
+              exec:
+                command:
+                - sleep
+                - "60"
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 30000
+              scheme: HTTP
+            periodSeconds: 30
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: sglang
+          ports:
+          - containerPort: 30000
+            name: http
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 30000
+              scheme: HTTP
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            limits:
+              cpu: "8"
+              memory: 24Gi
+              nvidia.com/gpu: "1"
+            requests:
+              cpu: "4"
+              memory: 16Gi
+          startupProbe:
+            failureThreshold: 40
+            httpGet:
+              path: /health
+              port: 30000
+              scheme: HTTP
+            periodSeconds: 15
+            successThreshold: 1
+            timeoutSeconds: 1
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /models
+            name: model-cache
+          - mountPath: /dev/shm
+            name: shm
+        dnsPolicy: ClusterFirst
+        initContainers:
+        - command:
+          - sh
+          - -c
+          - |
+            if [ -d /models/llama3 ]; then
+              echo "Model cache hit — skipping download"
+              exit 0
+            fi
+            huggingface-cli download \
+              meta-llama/Meta-Llama-3.1-8B-Instruct-AWQ \
+              --local-dir /models/llama3 \
+              --token "$HF_TOKEN"
+          env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                key: HF_TOKEN
+                name: hf-token
+          image: huggingface/downloader:latest
+          imagePullPolicy: Always
+          name: model-pull
+          resources:
+            limits:
+              cpu: "4"
+              memory: 8Gi
+            requests:
+              cpu: "2"
+              memory: 4Gi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /models
+            name: model-cache
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 120
+        tolerations:
+        - effect: NoSchedule
+          key: nvidia.com/gpu
+          operator: Exists
+        - effect: NoSchedule
+          key: cloud.google.com/gke-spot
+          operator: Equal
+          value: "true"
+        topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              app: sglang-llama3
+          maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+        volumes:
+        - hostPath:
+            path: /var/lib/models
+            type: DirectoryOrCreate
+          name: model-cache
+        - emptyDir:
+            medium: Memory
+            sizeLimit: 8Gi
+          name: shm
+  status:
+    conditions:
+    - lastTransitionTime: "2026-10-24T10:36:12Z"
+      lastUpdateTime: "2026-10-24T10:36:12Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-10-24T10:32:22Z"
+      lastUpdateTime: "2026-10-24T10:36:13Z"
+      message: ReplicaSet "sglang-llama3-56bfd46b84" has successfully progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 4
+    terminatingReplicas: 0
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "2"
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"sglang-qwen3","engine":"sglang","model":"qwen3"},"name":"sglang-qwen3","namespace":"llm-serving"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"sglang-qwen3"}},"template":{"metadata":{"annotations":{"prometheus.io/path":"/metrics","prometheus.io/port":"30000","prometheus.io/scrape":"true"},"labels":{"app":"sglang-qwen3","engine":"sglang","model":"qwen3"}},"spec":{"containers":[{"args":["--model-path=/models/qwen3","--served-model-name=qwen3-sglang","--quantization=fp8","--context-length=8192","--mem-fraction-static=0.88","--enable-prefix-caching","--tp=1","--port=30000","--host=0.0.0.0","--enable-metrics"],"command":["python","-m","sglang.launch_server"],"env":[{"name":"CUDA_VISIBLE_DEVICES","value":"0"}],"image":"lmsysorg/sglang:v0.5.20-cu121","lifecycle":{"postStart":{"exec":{"command":["sh","-c","sleep 5\ncurl -sf http://localhost:30000/v1/completions \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"model\":\"qwen3-sglang\",\"prompt\":\"Hello\",\"max_tokens\":1}' || true\n"]}},"preStop":{"exec":{"command":["sleep","60"]}}},"livenessProbe":{"failureThreshold":3,"httpGet":{"path":"/health","port":30000},"periodSeconds":30},"name":"sglang","ports":[{"containerPort":30000,"name":"http"}],"readinessProbe":{"failureThreshold":3,"httpGet":{"path":"/health","port":30000},"periodSeconds":10},"resources":{"limits":{"cpu":"8","memory":"24Gi","nvidia.com/gpu":"1"},"requests":{"cpu":"4","memory":"16Gi"}},"startupProbe":{"failureThreshold":40,"httpGet":{"path":"/health","port":30000},"periodSeconds":15},"volumeMounts":[{"mountPath":"/models","name":"model-cache"},{"mountPath":"/dev/shm","name":"shm"}]}],"initContainers":[{"command":["sh","-c","if [ -d /models/qwen3 ]; then\n  echo \"Model cache hit — skipping download\"\n  exit 0\nfi\nhuggingface-cli download \\\n  Qwen/Qwen3-8B-Instruct \\\n  --local-dir /models/qwen3\n"],"image":"huggingface/downloader:latest","name":"model-pull","resources":{"limits":{"cpu":"4","memory":"8Gi"},"requests":{"cpu":"2","memory":"4Gi"}},"volumeMounts":[{"mountPath":"/models","name":"model-cache"}]}],"terminationGracePeriodSeconds":120,"tolerations":[{"effect":"NoSchedule","key":"nvidia.com/gpu","operator":"Exists"}],"topologySpreadConstraints":[{"labelSelector":{"matchLabels":{"app":"sglang-qwen3"}},"maxSkew":1,"topologyKey":"kubernetes.io/hostname","whenUnsatisfiable":"DoNotSchedule"}],"volumes":[{"hostPath":{"path":"/var/lib/models","type":"DirectoryOrCreate"},"name":"model-cache"},{"emptyDir":{"medium":"Memory","sizeLimit":"8Gi"},"name":"shm"}]}}}}
+    creationTimestamp: "2026-10-22T11:03:22Z"
+    generation: 5
+    labels:
+      app: sglang-qwen3
+      engine: sglang
+      model: qwen3
+    name: sglang-qwen3
+    namespace: llm-serving
+    resourceVersion: "1792838186352703001"
+    uid: 70dad77c-76c1-4a7f-badf-df404af059f0
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 0
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: sglang-qwen3
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          prometheus.io/path: /metrics
+          prometheus.io/port: "30000"
+          prometheus.io/scrape: "true"
+        labels:
+          app: sglang-qwen3
+          engine: sglang
+          model: qwen3
+      spec:
+        containers:
+        - args:
+          - --model-path=/models/qwen3
+          - --served-model-name=qwen3-sglang
+          - --quantization=fp8
+          - --context-length=8192
+          - --mem-fraction-static=0.88
+          - --enable-prefix-caching
+          - --tp=1
+          - --port=30000
+          - --host=0.0.0.0
+          - --enable-metrics
+          command:
+          - python
+          - -m
+          - sglang.launch_server
+          env:
+          - name: CUDA_VISIBLE_DEVICES
+            value: "0"
+          image: lmsysorg/sglang:v0.5.20-cu121
+          imagePullPolicy: IfNotPresent
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                - sh
+                - -c
+                - |
+                  sleep 5
+                  curl -sf http://localhost:30000/v1/completions \
+                    -H "Content-Type: application/json" \
+                    -d '{"model":"qwen3-sglang","prompt":"Hello","max_tokens":1}' || true
+            preStop:
+              exec:
+                command:
+                - sleep
+                - "60"
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 30000
+              scheme: HTTP
+            periodSeconds: 30
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: sglang
+          ports:
+          - containerPort: 30000
+            name: http
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 30000
+              scheme: HTTP
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            limits:
+              cpu: "8"
+              memory: 24Gi
+              nvidia.com/gpu: "1"
+            requests:
+              cpu: "4"
+              memory: 16Gi
+          startupProbe:
+            failureThreshold: 40
+            httpGet:
+              path: /health
+              port: 30000
+              scheme: HTTP
+            periodSeconds: 15
+            successThreshold: 1
+            timeoutSeconds: 1
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /models
+            name: model-cache
+          - mountPath: /dev/shm
+            name: shm
+        dnsPolicy: ClusterFirst
+        initContainers:
+        - command:
+          - sh
+          - -c
+          - |
+            if [ -d /models/qwen3 ]; then
+              echo "Model cache hit — skipping download"
+              exit 0
+            fi
+            huggingface-cli download \
+              Qwen/Qwen3-8B-Instruct \
+              --local-dir /models/qwen3
+          image: huggingface/downloader:latest
+          imagePullPolicy: Always
+          name: model-pull
+          resources:
+            limits:
+              cpu: "4"
+              memory: 8Gi
+            requests:
+              cpu: "2"
+              memory: 4Gi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /models
+            name: model-cache
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 120
+        tolerations:
+        - effect: NoSchedule
+          key: nvidia.com/gpu
+          operator: Exists
+        - effect: NoSchedule
+          key: cloud.google.com/gke-spot
+          operator: Equal
+          value: "true"
+        topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              app: sglang-qwen3
+          maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+        volumes:
+        - hostPath:
+            path: /var/lib/models
+            type: DirectoryOrCreate
+          name: model-cache
+        - emptyDir:
+            medium: Memory
+            sizeLimit: 8Gi
+          name: shm
+  status:
+    conditions:
+    - lastTransitionTime: "2026-10-24T10:32:23Z"
+      lastUpdateTime: "2026-10-24T10:36:13Z"
+      message: ReplicaSet "sglang-qwen3-5577d947f8" has successfully progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    - lastTransitionTime: "2026-10-24T10:36:26Z"
+      lastUpdateTime: "2026-10-24T10:36:26Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    observedGeneration: 5
+    terminatingReplicas: 0
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "3"
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"vllm-llama3","model":"llama3"},"name":"vllm-llama3","namespace":"llm-serving"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"vllm-llama3"}},"template":{"metadata":{"annotations":{"prometheus.io/path":"/metrics","prometheus.io/port":"8000","prometheus.io/scrape":"true"},"labels":{"app":"vllm-llama3","model":"llama3"}},"spec":{"containers":[{"args":["--model=/models/llama3","--served-model-name=llama3","--quantization=awq","--max-model-len=8192","--gpu-memory-utilization=0.90","--enable-prefix-caching","--tensor-parallel-size=1","--otlp-traces-endpoint=http://opentelemetry-collector.monitoring.svc.cluster.local:4317","--port=8000","--host=0.0.0.0"],"command":["python","-m","vllm.entrypoints.openai.api_server"],"env":[{"name":"CUDA_VISIBLE_DEVICES","value":"0"}],"image":"vllm/vllm-openai:v0.30.0","lifecycle":{"postStart":{"exec":{"command":["sh","-c","sleep 5\ncurl -sf http://localhost:8000/v1/completions \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"model\":\"llama3\",\"prompt\":\"Hello\",\"max_tokens\":1}' || true\n"]}},"preStop":{"exec":{"command":["sleep","60"]}}},"livenessProbe":{"failureThreshold":3,"httpGet":{"path":"/health","port":8000},"initialDelaySeconds":0,"periodSeconds":30},"name":"vllm","ports":[{"containerPort":8000,"name":"http"}],"readinessProbe":{"failureThreshold":3,"httpGet":{"path":"/health","port":8000},"initialDelaySeconds":0,"periodSeconds":10},"resources":{"limits":{"cpu":"8","memory":"24Gi","nvidia.com/gpu":"1"},"requests":{"cpu":"4","memory":"16Gi"}},"startupProbe":{"failureThreshold":40,"httpGet":{"path":"/health","port":8000},"periodSeconds":15},"volumeMounts":[{"mountPath":"/models","name":"model-cache"},{"mountPath":"/dev/shm","name":"shm"}]}],"initContainers":[{"command":["sh","-c","if [ -d /models/llama3 ]; then\n  echo \"Model cache hit — skipping download\"\n  exit 0\nfi\nhuggingface-cli download \\\n  meta-llama/Meta-Llama-3.1-8B-Instruct-AWQ \\\n  --local-dir /models/llama3 \\\n  --token \"$HF_TOKEN\"\n"],"env":[{"name":"HF_TOKEN","valueFrom":{"secretKeyRef":{"key":"HUGGINGFACE_TOKEN","name":"platform-secrets"}}}],"image":"huggingface/downloader:latest","name":"model-pull","resources":{"requests":{"cpu":"2","memory":"4Gi"}},"volumeMounts":[{"mountPath":"/models","name":"model-cache"}]}],"terminationGracePeriodSeconds":120,"tolerations":[{"effect":"NoSchedule","key":"nvidia.com/gpu","operator":"Exists"}],"topologySpreadConstraints":[{"labelSelector":{"matchLabels":{"app":"vllm-llama3"}},"maxSkew":1,"topologyKey":"kubernetes.io/hostname","whenUnsatisfiable":"DoNotSchedule"}],"volumes":[{"hostPath":{"path":"/var/lib/models","type":"DirectoryOrCreate"},"name":"model-cache"},{"emptyDir":{"medium":"Memory","sizeLimit":"8Gi"},"name":"shm"}]}}}}
+    creationTimestamp: "2026-10-22T10:58:45Z"
+    generation: 6
+    labels:
+      app: vllm-llama3
+      model: llama3
+    name: vllm-llama3
+    namespace: llm-serving
+    resourceVersion: "1792838187753135021"
+    uid: 6fe88537-a09d-4f29-a064-504103431351
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 0
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: vllm-llama3
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          prometheus.io/path: /metrics
+          prometheus.io/port: "8000"
+          prometheus.io/scrape: "true"
+        labels:
+          app: vllm-llama3
+          model: llama3
+      spec:
+        containers:
+        - args:
+          - --model=/models/llama3
+          - --served-model-name=llama3
+          - --quantization=awq
+          - --max-model-len=8192
+          - --gpu-memory-utilization=0.90
+          - --enable-prefix-caching
+          - --tensor-parallel-size=1
+          - --otlp-traces-endpoint=http://opentelemetry-collector.monitoring.svc.cluster.local:4317
+          - --port=8000
+          - --host=0.0.0.0
+          command:
+          - python
+          - -m
+          - vllm.entrypoints.openai.api_server
+          env:
+          - name: CUDA_VISIBLE_DEVICES
+            value: "0"
+          image: vllm/vllm-openai:v0.30.0
+          imagePullPolicy: IfNotPresent
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                - sh
+                - -c
+                - |
+                  sleep 5
+                  curl -sf http://localhost:8000/v1/completions \
+                    -H "Content-Type: application/json" \
+                    -d '{"model":"llama3","prompt":"Hello","max_tokens":1}' || true
+            preStop:
+              exec:
+                command:
+                - sleep
+                - "60"
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8000
+              scheme: HTTP
+            periodSeconds: 30
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: vllm
+          ports:
+          - containerPort: 8000
+            name: http
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8000
+              scheme: HTTP
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            limits:
+              cpu: "8"
+              memory: 24Gi
+              nvidia.com/gpu: "1"
+            requests:
+              cpu: "4"
+              memory: 16Gi
+          startupProbe:
+            failureThreshold: 40
+            httpGet:
+              path: /health
+              port: 8000
+              scheme: HTTP
+            periodSeconds: 15
+            successThreshold: 1
+            timeoutSeconds: 1
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /models
+            name: model-cache
+          - mountPath: /dev/shm
+            name: shm
+        dnsPolicy: ClusterFirst
+        initContainers:
+        - command:
+          - sh
+          - -c
+          - |
+            if [ -d /models/llama3 ]; then
+              echo "Model cache hit — skipping download"
+              exit 0
+            fi
+            huggingface-cli download \
+              meta-llama/Meta-Llama-3.1-8B-Instruct-AWQ \
+              --local-dir /models/llama3 \
+              --token "$HF_TOKEN"
+          env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                key: HF_TOKEN
+                name: hf-token
+          image: huggingface/downloader:latest
+          imagePullPolicy: Always
+          name: model-pull
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /models
+            name: model-cache
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 120
+        tolerations:
+        - effect: NoSchedule
+          key: nvidia.com/gpu
+          operator: Exists
+        - effect: NoSchedule
+          key: cloud.google.com/gke-spot
+          operator: Equal
+          value: "true"
+        topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              app: vllm-llama3
+          maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+        volumes:
+        - hostPath:
+            path: /var/lib/models
+            type: DirectoryOrCreate
+          name: model-cache
+        - emptyDir:
+            medium: Memory
+            sizeLimit: 8Gi
+          name: shm
+  status:
+    conditions:
+    - lastTransitionTime: "2026-10-24T10:32:20Z"
+      lastUpdateTime: "2026-10-24T10:36:11Z"
+      message: ReplicaSet "vllm-llama3-55f59b6c88" has successfully progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    - lastTransitionTime: "2026-10-24T10:36:27Z"
+      lastUpdateTime: "2026-10-24T10:36:27Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    observedGeneration: 6
+    terminatingReplicas: 0
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "5"
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"vllm-qwen3","model":"qwen3"},"name":"vllm-qwen3","namespace":"llm-serving"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"vllm-qwen3"}},"template":{"metadata":{"annotations":{"prometheus.io/path":"/metrics","prometheus.io/port":"8000","prometheus.io/scrape":"true"},"labels":{"app":"vllm-qwen3","model":"qwen3"}},"spec":{"containers":[{"args":["--model=/models/qwen3","--served-model-name=qwen3","--quantization=fp8","--max-model-len=8192","--gpu-memory-utilization=0.90","--enable-prefix-caching","--tensor-parallel-size=1","--port=8000","--host=0.0.0.0"],"command":["python","-m","vllm.entrypoints.openai.api_server"],"env":[{"name":"CUDA_VISIBLE_DEVICES","value":"0"}],"image":"vllm/vllm-openai:v0.30.0","lifecycle":{"postStart":{"exec":{"command":["sh","-c","sleep 5\ncurl -sf http://localhost:8000/v1/completions \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"model\":\"qwen3\",\"prompt\":\"Hello\",\"max_tokens\":1}' || true\n"]}},"preStop":{"exec":{"command":["sleep","60"]}}},"livenessProbe":{"failureThreshold":3,"httpGet":{"path":"/health","port":8000},"periodSeconds":30},"name":"vllm","ports":[{"containerPort":8000,"name":"http"}],"readinessProbe":{"failureThreshold":3,"httpGet":{"path":"/health","port":8000},"periodSeconds":10},"resources":{"limits":{"cpu":"8","memory":"24Gi","nvidia.com/gpu":"1"},"requests":{"cpu":"4","memory":"16Gi"}},"startupProbe":{"failureThreshold":40,"httpGet":{"path":"/health","port":8000},"periodSeconds":15},"volumeMounts":[{"mountPath":"/models","name":"model-cache"},{"mountPath":"/dev/shm","name":"shm"}]}],"initContainers":[{"command":["sh","-c","if [ -d /models/qwen3 ]; then\n  echo \"Model cache hit — skipping download\"\n  exit 0\nfi\nhuggingface-cli download \\\n  Qwen/Qwen3-8B-Instruct \\\n  --local-dir /models/qwen3\n"],"image":"huggingface/downloader:latest","name":"model-pull","resources":{"requests":{"cpu":"2","memory":"4Gi"}},"volumeMounts":[{"mountPath":"/models","name":"model-cache"}]}],"terminationGracePeriodSeconds":120,"tolerations":[{"effect":"NoSchedule","key":"nvidia.com/gpu","operator":"Exists"}],"topologySpreadConstraints":[{"labelSelector":{"matchLabels":{"app":"vllm-qwen3"}},"maxSkew":1,"topologyKey":"kubernetes.io/hostname","whenUnsatisfiable":"DoNotSchedule"}],"volumes":[{"hostPath":{"path":"/var/lib/models","type":"DirectoryOrCreate"},"name":"model-cache"},{"emptyDir":{"medium":"Memory","sizeLimit":"8Gi"},"name":"shm"}]}}}}
+    creationTimestamp: "2026-10-22T04:10:16Z"
+    generation: 6
+    labels:
+      app: vllm-qwen3
+      model: qwen3
+    name: vllm-qwen3
+    namespace: llm-serving
+    resourceVersion: "1792838537907903022"
+    uid: e962a17d-0a1b-4775-82bf-6222f39533f2
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: vllm-qwen3
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          prometheus.io/path: /metrics
+          prometheus.io/port: "8000"
+          prometheus.io/scrape: "true"
+        labels:
+          app: vllm-qwen3
+          model: qwen3
+      spec:
+        containers:
+        - args:
+          - --model=/models/qwen3
+          - --served-model-name=qwen3
+          - --quantization=fp8
+          - --max-model-len=8192
+          - --gpu-memory-utilization=0.90
+          - --enable-prefix-caching
+          - --tensor-parallel-size=1
+          - --enable-auto-tool-choice
+          - --tool-call-parser=hermes
+          - --port=8000
+          - --host=0.0.0.0
+          command:
+          - python3
+          - -m
+          - vllm.entrypoints.openai.api_server
+          env:
+          - name: CUDA_VISIBLE_DEVICES
+            value: "0"
+          image: vllm/vllm-openai:v0.32.0
+          imagePullPolicy: IfNotPresent
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                - sh
+                - -c
+                - |
+                  sleep 5
+                  curl -sf http://localhost:8000/v1/completions \
+                    -H "Content-Type: application/json" \
+                    -d '{"model":"qwen3","prompt":"Hello","max_tokens":1}' || true
+            preStop:
+              exec:
+                command:
+                - sleep
+                - "60"
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8000
+              scheme: HTTP
+            periodSeconds: 30
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: vllm
+          ports:
+          - containerPort: 8000
+            name: http
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8000
+              scheme: HTTP
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            limits:
+              cpu: "8"
+              memory: 24Gi
+              nvidia.com/gpu: "1"
+            requests:
+              cpu: "4"
+              memory: 16Gi
+          startupProbe:
+            failureThreshold: 40
+            httpGet:
+              path: /health
+              port: 8000
+              scheme: HTTP
+            periodSeconds: 15
+            successThreshold: 1
+            timeoutSeconds: 1
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /models
+            name: model-cache
+          - mountPath: /dev/shm
+            name: shm
+        dnsPolicy: ClusterFirst
+        initContainers:
+        - command:
+          - sh
+          - -c
+          - |
+            if [ -f /models/qwen3/model-00005-of-00005.safetensors ]; then
+              echo "Model cache hit — skipping download"
+              exit 0
+            fi
+            rm -rf /models/qwen3
+            pip install -q huggingface-hub
+            python3 -c "
+            from huggingface_hub import snapshot_download
+            snapshot_download('Qwen/Qwen3-8B', local_dir='/models/qwen3')
+            print('Download complete')
+            "
+          env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                key: HF_TOKEN
+                name: hf-token
+          image: python:3.11-slim
+          imagePullPolicy: IfNotPresent
+          name: model-pull
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /models
+            name: model-cache
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 120
+        tolerations:
+        - effect: NoSchedule
+          key: nvidia.com/gpu
+          operator: Exists
+        topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              app: vllm-qwen3
+          maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+        volumes:
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: model-cache-qwen3
+        - emptyDir:
+            medium: Memory
+            sizeLimit: 8Gi
+          name: shm
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-10-22T05:49:31Z"
+      lastUpdateTime: "2026-10-22T05:49:31Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-10-24T10:36:14Z"
+      lastUpdateTime: "2026-10-24T10:42:17Z"
+      message: ReplicaSet "vllm-qwen3-547ddf6dbd" has successfully progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 6
+    readyReplicas: 1
+    replicas: 1
+    terminatingReplicas: 0
+    updatedReplicas: 1
+kind: List
+metadata:
+  resourceVersion: ""

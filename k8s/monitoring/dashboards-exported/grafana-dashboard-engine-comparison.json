@@ -1,0 +1,111 @@
+{
+  "title": "vLLM vs SGLang \u2014 Live Comparison",
+  "uid": "engine-compare",
+  "tags": [
+    "llm",
+    "vllm",
+    "sglang"
+  ],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "title": "Request Queue Depth \u2014 vLLM vs SGLang",
+      "targets": [
+        {
+          "expr": "sum(vllm:num_requests_waiting) by (model_name)",
+          "legendFormat": "vLLM {{model_name}}"
+        },
+        {
+          "expr": "sum(sglang:num_queue_reqs) by (model_name)",
+          "legendFormat": "SGLang {{model_name}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "title": "KV-Cache Utilization %",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "max": 1
+        }
+      },
+      "targets": [
+        {
+          "expr": "avg(vllm:kv_cache_usage_perc) by (model_name)",
+          "legendFormat": "vLLM {{model_name}}"
+        },
+        {
+          "expr": "avg(sglang:gpu_cache_usage_perc) by (model_name)",
+          "legendFormat": "SGLang {{model_name}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "title": "Running Requests",
+      "targets": [
+        {
+          "expr": "sum(vllm:num_requests_running) by (model_name)",
+          "legendFormat": "vLLM {{model_name}}"
+        },
+        {
+          "expr": "sum(sglang:num_running_reqs) by (model_name)",
+          "legendFormat": "SGLang {{model_name}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "title": "Throughput (tokens/s)",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        }
+      },
+      "targets": [
+        {
+          "expr": "rate(vllm:generation_tokens_total[1m])",
+          "legendFormat": "vLLM tok/s"
+        },
+        {
+          "expr": "rate(sglang:new_generated_tokens_total[1m])",
+          "legendFormat": "SGLang tok/s"
+        }
+      ]
+    }
+  ]
+}

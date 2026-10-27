@@ -1,0 +1,323 @@
+apiVersion: v1
+items:
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    annotations:
+      helm.sh/resource-policy: keep
+      meta.helm.sh/release-name: traefik
+      meta.helm.sh/release-namespace: kube-system
+      pv.kubernetes.io/bind-completed: "yes"
+      pv.kubernetes.io/bound-by-controller: "yes"
+      volume.beta.kubernetes.io/storage-provisioner: pd.csi.storage.gke.io
+      volume.kubernetes.io/selected-node: gke-llm-inference-cpu-nodes-1e9a33a0-54jg
+      volume.kubernetes.io/storage-provisioner: pd.csi.storage.gke.io
+    creationTimestamp: "2026-10-22T04:29:01Z"
+    finalizers:
+    - kubernetes.io/pvc-protection
+    labels:
+      app.kubernetes.io/instance: traefik-kube-system
+      app.kubernetes.io/managed-by: Helm
+      app.kubernetes.io/name: traefik
+      helm.sh/chart: traefik-42.1.2
+    name: traefik
+    namespace: kube-system
+    resourceVersion: "1792643345167359020"
+    uid: e141a19c-1e37-4b0f-8e48-1ae548745b8c
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 1Gi
+    storageClassName: standard-rwo
+    volumeMode: Filesystem
+    volumeName: pvc-e141a19c-1e37-4b0f-8e48-1ae548745b8c
+  status:
+    accessModes:
+    - ReadWriteOnce
+    capacity:
+      storage: 1Gi
+    phase: Bound
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    annotations:
+      pv.kubernetes.io/bind-completed: "yes"
+      pv.kubernetes.io/bound-by-controller: "yes"
+      volume.beta.kubernetes.io/storage-provisioner: pd.csi.storage.gke.io
+      volume.kubernetes.io/selected-node: gke-llm-inference-cpu-nodes-1e9a33a0-54jg
+      volume.kubernetes.io/storage-provisioner: pd.csi.storage.gke.io
+    creationTimestamp: "2026-10-22T05:12:12Z"
+    finalizers:
+    - kubernetes.io/pvc-protection
+    labels:
+      app: postgres
+    name: data-postgres-0
+    namespace: llm-gateway
+    resourceVersion: "1792645934789647017"
+    uid: b6845b2f-ab61-45a7-902c-e54ea114ab0d
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 10Gi
+    storageClassName: standard-rwo
+    volumeMode: Filesystem
+    volumeName: pvc-b6845b2f-ab61-45a7-902c-e54ea114ab0d
+  status:
+    accessModes:
+    - ReadWriteOnce
+    capacity:
+      storage: 10Gi
+    phase: Bound
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","kind":"PersistentVolumeClaim","metadata":{"annotations":{},"name":"postgres-backup-pvc","namespace":"llm-gateway"},"spec":{"accessModes":["ReadWriteOnce"],"resources":{"requests":{"storage":"5Gi"}},"storageClassName":"standard-rwo"}}
+      pv.kubernetes.io/bind-completed: "yes"
+      pv.kubernetes.io/bound-by-controller: "yes"
+      volume.beta.kubernetes.io/storage-provisioner: pd.csi.storage.gke.io
+      volume.kubernetes.io/selected-node: gke-llm-inference-cpu-nodes-6ddcf216-rxr7
+      volume.kubernetes.io/storage-provisioner: pd.csi.storage.gke.io
+    creationTimestamp: "2026-10-22T08:59:29Z"
+    finalizers:
+    - kubernetes.io/pvc-protection
+    name: postgres-backup-pvc
+    namespace: llm-gateway
+    resourceVersion: "1792720803233823007"
+    uid: 961c7c03-6174-48fe-82ff-2c0766cf473c
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 5Gi
+    storageClassName: standard-rwo
+    volumeMode: Filesystem
+    volumeName: pvc-961c7c03-6174-48fe-82ff-2c0766cf473c
+  status:
+    accessModes:
+    - ReadWriteOnce
+    capacity:
+      storage: 5Gi
+    phase: Bound
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","kind":"PersistentVolumeClaim","metadata":{"annotations":{},"name":"redis-data-pvc","namespace":"llm-gateway"},"spec":{"accessModes":["ReadWriteOnce"],"resources":{"requests":{"storage":"5Gi"}}}}
+      pv.kubernetes.io/bind-completed: "yes"
+      pv.kubernetes.io/bound-by-controller: "yes"
+      volume.beta.kubernetes.io/storage-provisioner: pd.csi.storage.gke.io
+      volume.kubernetes.io/selected-node: gke-llm-inference-cpu-nodes-1e9a33a0-54jg
+      volume.kubernetes.io/storage-provisioner: pd.csi.storage.gke.io
+    creationTimestamp: "2026-10-22T05:12:09Z"
+    finalizers:
+    - kubernetes.io/pvc-protection
+    name: redis-data-pvc
+    namespace: llm-gateway
+    resourceVersion: "1792645931669279017"
+    uid: 59f1c76d-5d16-43e4-b048-ea79d2447260
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 5Gi
+    storageClassName: standard-rwo
+    volumeMode: Filesystem
+    volumeName: pvc-59f1c76d-5d16-43e4-b048-ea79d2447260
+  status:
+    accessModes:
+    - ReadWriteOnce
+    capacity:
+      storage: 5Gi
+    phase: Bound
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","kind":"PersistentVolumeClaim","metadata":{"annotations":{},"name":"model-cache-qwen3","namespace":"llm-serving"},"spec":{"accessModes":["ReadWriteOnce"],"resources":{"requests":{"storage":"50Gi"}},"storageClassName":"standard-rwo"}}
+      pv.kubernetes.io/bind-completed: "yes"
+      pv.kubernetes.io/bound-by-controller: "yes"
+      volume.beta.kubernetes.io/storage-provisioner: pd.csi.storage.gke.io
+      volume.kubernetes.io/selected-node: gke-llm-inference-gpu-nodes-1363795c-ms25
+      volume.kubernetes.io/storage-provisioner: pd.csi.storage.gke.io
+    creationTimestamp: "2026-10-22T04:31:19Z"
+    finalizers:
+    - kubernetes.io/pvc-protection
+    name: model-cache-qwen3
+    namespace: llm-serving
+    resourceVersion: "1792644451037119007"
+    uid: e4ccfb88-54be-4166-a922-a7b9dbbac6d0
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 50Gi
+    storageClassName: standard-rwo
+    volumeMode: Filesystem
+    volumeName: pvc-e4ccfb88-54be-4166-a922-a7b9dbbac6d0
+  status:
+    accessModes:
+    - ReadWriteOnce
+    capacity:
+      storage: 50Gi
+    phase: Bound
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    annotations:
+      pv.kubernetes.io/bind-completed: "yes"
+      pv.kubernetes.io/bound-by-controller: "yes"
+      volume.beta.kubernetes.io/storage-provisioner: pd.csi.storage.gke.io
+      volume.kubernetes.io/selected-node: gke-llm-inference-cpu-nodes-1e9a33a0-54jg
+      volume.kubernetes.io/storage-provisioner: pd.csi.storage.gke.io
+    creationTimestamp: "2026-10-22T04:21:20Z"
+    finalizers:
+    - kubernetes.io/pvc-protection
+    labels:
+      alertmanager: kube-prometheus-stack-alertmanager
+      app.kubernetes.io/instance: kube-prometheus-stack-alertmanager
+      app.kubernetes.io/managed-by: prometheus-operator
+      app.kubernetes.io/name: alertmanager
+    name: alertmanager-kube-prometheus-stack-alertmanager-db-alertmanager-kube-prometheus-stack-alertmanager-0
+    namespace: monitoring
+    resourceVersion: "1792642881891887001"
+    uid: 0ee7a482-a097-43d0-8759-5d7685ee029b
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 5Gi
+    storageClassName: standard-rwo
+    volumeMode: Filesystem
+    volumeName: pvc-0ee7a482-a097-43d0-8759-5d7685ee029b
+  status:
+    accessModes:
+    - ReadWriteOnce
+    capacity:
+      storage: 5Gi
+    phase: Bound
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    annotations:
+      meta.helm.sh/release-name: kube-prometheus-stack
+      meta.helm.sh/release-namespace: monitoring
+      pv.kubernetes.io/bind-completed: "yes"
+      pv.kubernetes.io/bound-by-controller: "yes"
+      volume.beta.kubernetes.io/storage-provisioner: pd.csi.storage.gke.io
+      volume.kubernetes.io/selected-node: gke-llm-inference-cpu-nodes-1e9a33a0-54jg
+      volume.kubernetes.io/storage-provisioner: pd.csi.storage.gke.io
+    creationTimestamp: "2026-10-22T04:21:10Z"
+    finalizers:
+    - kubernetes.io/pvc-protection
+    labels:
+      app.kubernetes.io/instance: kube-prometheus-stack
+      app.kubernetes.io/managed-by: Helm
+      app.kubernetes.io/name: grafana
+      app.kubernetes.io/version: 13.2.4
+      helm.sh/chart: grafana-14.0.1
+    name: kube-prometheus-stack-grafana
+    namespace: monitoring
+    resourceVersion: "1792642955959743006"
+    uid: 7c152b40-43c2-4d55-ae13-15b2b37ce218
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 5Gi
+    storageClassName: standard-rwo
+    volumeMode: Filesystem
+    volumeName: pvc-7c152b40-43c2-4d55-ae13-15b2b37ce218
+  status:
+    accessModes:
+    - ReadWriteOnce
+    capacity:
+      storage: 5Gi
+    phase: Bound
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    annotations:
+      pv.kubernetes.io/bind-completed: "yes"
+      pv.kubernetes.io/bound-by-controller: "yes"
+      volume.beta.kubernetes.io/storage-provisioner: pd.csi.storage.gke.io
+      volume.kubernetes.io/selected-node: gke-llm-inference-cpu-nodes-1e9a33a0-54jg
+      volume.kubernetes.io/storage-provisioner: pd.csi.storage.gke.io
+    creationTimestamp: "2026-10-22T04:21:20Z"
+    finalizers:
+    - kubernetes.io/pvc-protection
+    labels:
+      app.kubernetes.io/instance: kube-prometheus-stack-prometheus
+      app.kubernetes.io/managed-by: prometheus-operator
+      app.kubernetes.io/name: prometheus
+      operator.prometheus.io/name: kube-prometheus-stack-prometheus
+      operator.prometheus.io/shard: "0"
+      prometheus: kube-prometheus-stack-prometheus
+    name: prometheus-kube-prometheus-stack-prometheus-db-prometheus-kube-prometheus-stack-prometheus-0
+    namespace: monitoring
+    resourceVersion: "1792642882135023010"
+    uid: 826a4237-d91b-4ddc-a323-09f7ddd9b9c9
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 50Gi
+    storageClassName: standard-rwo
+    volumeMode: Filesystem
+    volumeName: pvc-826a4237-d91b-4ddc-a323-09f7ddd9b9c9
+  status:
+    accessModes:
+    - ReadWriteOnce
+    capacity:
+      storage: 50Gi
+    phase: Bound
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    annotations:
+      pv.kubernetes.io/bind-completed: "yes"
+      pv.kubernetes.io/bound-by-controller: "yes"
+      volume.beta.kubernetes.io/storage-provisioner: pd.csi.storage.gke.io
+      volume.kubernetes.io/selected-node: gke-llm-inference-cpu-nodes-1e9a33a0-54jg
+      volume.kubernetes.io/storage-provisioner: pd.csi.storage.gke.io
+    creationTimestamp: "2026-10-22T04:26:06Z"
+    finalizers:
+    - kubernetes.io/pvc-protection
+    labels:
+      app: loki
+      release: loki-stack
+    name: storage-loki-stack-0
+    namespace: monitoring
+    resourceVersion: "1792643172240863018"
+    uid: 1c6f18f5-1cbe-4697-bc8d-b0dd045561e6
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 20Gi
+    storageClassName: standard-rwo
+    volumeMode: Filesystem
+    volumeName: pvc-1c6f18f5-1cbe-4697-bc8d-b0dd045561e6
+  status:
+    accessModes:
+    - ReadWriteOnce
+    capacity:
+      storage: 20Gi
+    phase: Bound
+kind: List
+metadata:
+  resourceVersion: ""

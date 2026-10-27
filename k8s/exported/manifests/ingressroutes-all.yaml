@@ -1,0 +1,143 @@
+apiVersion: v1
+items:
+- apiVersion: traefik.io/v1alpha1
+  kind: IngressRoute
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"traefik.io/v1alpha1","kind":"IngressRoute","metadata":{"annotations":{},"name":"agent-ingressroute-https","namespace":"llm-gateway"},"spec":{"entryPoints":["websecure"],"routes":[{"kind":"Rule","match":"Host(`api.136.65.123.94.nip.io`) \u0026\u0026 PathPrefix(`/agent`)","middlewares":[{"name":"agent-strip-prefix"}],"services":[{"name":"anamodel-agent-service","port":80}]}],"tls":{"secretName":"anamodel-tls-secret"}}}
+    creationTimestamp: "2026-10-22T09:30:56Z"
+    generation: 1
+    name: agent-ingressroute-https
+    namespace: llm-gateway
+    resourceVersion: "1792661456452239018"
+    uid: 8ba6798e-35cb-4eb6-901f-a8a6cc28980d
+  spec:
+    entryPoints:
+    - websecure
+    routes:
+    - kind: Rule
+      match: Host(`api.136.65.123.94.nip.io`) && PathPrefix(`/agent`)
+      middlewares:
+      - name: agent-strip-prefix
+      services:
+      - name: anamodel-agent-service
+        port: 80
+    tls:
+      secretName: anamodel-tls-secret
+- apiVersion: traefik.io/v1alpha1
+  kind: IngressRoute
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"traefik.io/v1alpha1","kind":"IngressRoute","metadata":{"annotations":{},"name":"anamodel-agent-ingressroute","namespace":"llm-gateway"},"spec":{"entryPoints":["web"],"routes":[{"kind":"Rule","match":"PathPrefix(`/agent`)","middlewares":[{"name":"agent-strip-prefix"}],"services":[{"name":"anamodel-agent-service","port":80}]}]}}
+    creationTimestamp: "2026-10-22T10:33:39Z"
+    generation: 1
+    name: anamodel-agent-ingressroute
+    namespace: llm-gateway
+    resourceVersion: "1792665219621775023"
+    uid: 1ec9e353-0198-471c-8b43-866c394154c8
+  spec:
+    entryPoints:
+    - web
+    routes:
+    - kind: Rule
+      match: PathPrefix(`/agent`)
+      middlewares:
+      - name: agent-strip-prefix
+      services:
+      - name: anamodel-agent-service
+        port: 80
+- apiVersion: traefik.io/v1alpha1
+  kind: IngressRoute
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"traefik.io/v1alpha1","kind":"IngressRoute","metadata":{"annotations":{},"name":"litellm-ingressroute","namespace":"llm-gateway"},"spec":{"entryPoints":["web"],"routes":[{"kind":"Rule","match":"PathPrefix(`/`)","services":[{"name":"litellm-proxy-service","port":80}]}]}}
+    creationTimestamp: "2026-10-22T05:25:23Z"
+    generation: 1
+    name: litellm-ingressroute
+    namespace: llm-gateway
+    resourceVersion: "1792646723316591010"
+    uid: 043a9cbc-dce4-4918-af7d-7fe69454047f
+  spec:
+    entryPoints:
+    - web
+    routes:
+    - kind: Rule
+      match: PathPrefix(`/`)
+      services:
+      - name: litellm-proxy-service
+        port: 80
+- apiVersion: traefik.io/v1alpha1
+  kind: IngressRoute
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"traefik.io/v1alpha1","kind":"IngressRoute","metadata":{"annotations":{},"name":"litellm-ingressroute-https","namespace":"llm-gateway"},"spec":{"entryPoints":["websecure"],"routes":[{"kind":"Rule","match":"Host(`api.136.65.123.94.nip.io`) \u0026\u0026 PathPrefix(`/`)","services":[{"name":"litellm-proxy-service","port":80}]}],"tls":{"secretName":"anamodel-tls-secret"}}}
+    creationTimestamp: "2026-10-22T09:30:55Z"
+    generation: 1
+    name: litellm-ingressroute-https
+    namespace: llm-gateway
+    resourceVersion: "1792661455973855014"
+    uid: 05f024e8-eb15-4fc3-999e-2395b812260c
+  spec:
+    entryPoints:
+    - websecure
+    routes:
+    - kind: Rule
+      match: Host(`api.136.65.123.94.nip.io`) && PathPrefix(`/`)
+      services:
+      - name: litellm-proxy-service
+        port: 80
+    tls:
+      secretName: anamodel-tls-secret
+- apiVersion: traefik.io/v1alpha1
+  kind: IngressRoute
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"traefik.io/v1alpha1","kind":"IngressRoute","metadata":{"annotations":{},"name":"grafana-ingressroute","namespace":"monitoring"},"spec":{"entryPoints":["websecure"],"routes":[{"kind":"Rule","match":"Host(`grafana.136.65.123.94.nip.io`)","services":[{"name":"kube-prometheus-stack-grafana","port":80}]}],"tls":{"secretName":"monitoring-tls-secret"}}}
+    creationTimestamp: "2026-10-22T14:32:54Z"
+    generation: 3
+    name: grafana-ingressroute
+    namespace: monitoring
+    resourceVersion: "1792696822775583011"
+    uid: b72c109b-25c1-4338-84d3-8f137b61f7b5
+  spec:
+    entryPoints:
+    - websecure
+    routes:
+    - kind: Rule
+      match: Host(`grafana.136.65.123.94.nip.io`)
+      services:
+      - name: kube-prometheus-stack-grafana
+        port: 80
+    tls:
+      secretName: monitoring-tls-secret
+- apiVersion: traefik.io/v1alpha1
+  kind: IngressRoute
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"traefik.io/v1alpha1","kind":"IngressRoute","metadata":{"annotations":{},"name":"prometheus-ingressroute","namespace":"monitoring"},"spec":{"entryPoints":["websecure"],"routes":[{"kind":"Rule","match":"Host(`prometheus.136.65.123.94.nip.io`)","services":[{"name":"kube-prometheus-stack-prometheus","port":9090}]}],"tls":{"secretName":"monitoring-tls-secret"}}}
+    creationTimestamp: "2026-10-22T14:32:54Z"
+    generation: 3
+    name: prometheus-ingressroute
+    namespace: monitoring
+    resourceVersion: "1792696823325327008"
+    uid: 21467e03-c703-44ef-8205-662367785b64
+  spec:
+    entryPoints:
+    - websecure
+    routes:
+    - kind: Rule
+      match: Host(`prometheus.136.65.123.94.nip.io`)
+      services:
+      - name: kube-prometheus-stack-prometheus
+        port: 9090
+    tls:
+      secretName: monitoring-tls-secret
+kind: List
+metadata:
+  resourceVersion: ""

@@ -1,0 +1,14 @@
+USER-SUPPLIED VALUES:
+fluent-bit:
+  enabled: true
+grafana:
+  enabled: false
+loki:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 20Gi
+  serviceMonitor:
+    enabled: true
+prometheus:
+  enabled: false

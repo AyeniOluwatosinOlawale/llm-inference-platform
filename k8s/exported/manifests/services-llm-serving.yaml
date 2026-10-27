@@ -1,0 +1,203 @@
+apiVersion: v1
+items:
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      cloud.google.com/neg: '{"ingress":true}'
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"labels":{"app":"vllm-llama3-70b"},"name":"llama3-70b-vllm-service","namespace":"llm-serving"},"spec":{"ports":[{"name":"http","port":8000,"targetPort":8000}],"selector":{"app":"vllm-llama3-70b"},"type":"ClusterIP"}}
+    creationTimestamp: "2026-10-22T10:58:39Z"
+    labels:
+      app: vllm-llama3-70b
+    name: llama3-70b-vllm-service
+    namespace: llm-serving
+    resourceVersion: "1792666719435023017"
+    uid: bb5c673f-a0aa-404e-999e-1dd8b33e180c
+  spec:
+    clusterIP: 10.52.5.60
+    clusterIPs:
+    - 10.52.5.60
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: http
+      port: 8000
+      protocol: TCP
+      targetPort: 8000
+    selector:
+      app: vllm-llama3-70b
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      cloud.google.com/neg: '{"ingress":true}'
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"labels":{"app":"sglang-llama3"},"name":"llama3-sglang-service","namespace":"llm-serving"},"spec":{"ports":[{"name":"http","port":30000,"targetPort":30000}],"selector":{"app":"sglang-llama3"},"type":"ClusterIP"}}
+    creationTimestamp: "2026-10-22T11:03:22Z"
+    labels:
+      app: sglang-llama3
+    name: llama3-sglang-service
+    namespace: llm-serving
+    resourceVersion: "1792667002721951009"
+    uid: 23677c74-1d87-4b63-83d3-f505d8fe27b7
+  spec:
+    clusterIP: 10.52.13.74
+    clusterIPs:
+    - 10.52.13.74
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: http
+      port: 30000
+      protocol: TCP
+      targetPort: 30000
+    selector:
+      app: sglang-llama3
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      cloud.google.com/neg: '{"ingress":true}'
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"labels":{"app":"vllm-llama3"},"name":"llama3-vllm-service","namespace":"llm-serving"},"spec":{"ports":[{"name":"http","port":8000,"targetPort":8000}],"selector":{"app":"vllm-llama3"},"type":"ClusterIP"}}
+    creationTimestamp: "2026-10-22T10:58:43Z"
+    labels:
+      app: vllm-llama3
+    name: llama3-vllm-service
+    namespace: llm-serving
+    resourceVersion: "1792666723320319024"
+    uid: ef213edb-6fd0-48f8-8ece-8910541e6759
+  spec:
+    clusterIP: 10.52.8.1
+    clusterIPs:
+    - 10.52.8.1
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: http
+      port: 8000
+      protocol: TCP
+      targetPort: 8000
+    selector:
+      app: vllm-llama3
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      cloud.google.com/neg: '{"ingress":true}'
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"labels":{"app":"vllm-llama3"},"name":"llama3-vllm-service-canary","namespace":"llm-serving"},"spec":{"ports":[{"name":"http","port":8000,"targetPort":8000}],"selector":{"app":"vllm-llama3"},"type":"ClusterIP"}}
+    creationTimestamp: "2026-10-22T10:58:43Z"
+    labels:
+      app: vllm-llama3
+    name: llama3-vllm-service-canary
+    namespace: llm-serving
+    resourceVersion: "1792666723522975004"
+    uid: f6533755-5e17-4917-9564-4b833c9feb00
+  spec:
+    clusterIP: 10.52.13.206
+    clusterIPs:
+    - 10.52.13.206
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: http
+      port: 8000
+      protocol: TCP
+      targetPort: 8000
+    selector:
+      app: vllm-llama3
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      cloud.google.com/neg: '{"ingress":true}'
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"labels":{"app":"vllm-qwen3"},"name":"qwen3-service","namespace":"llm-serving"},"spec":{"ports":[{"name":"http","port":8000,"targetPort":8000}],"selector":{"app":"vllm-qwen3"},"type":"ClusterIP"}}
+    creationTimestamp: "2026-10-22T04:10:18Z"
+    labels:
+      app: vllm-qwen3
+    name: qwen3-service
+    namespace: llm-serving
+    resourceVersion: "1792642218214287015"
+    uid: 47315141-cc2f-4541-b6ab-ad3d945c4411
+  spec:
+    clusterIP: 10.52.14.132
+    clusterIPs:
+    - 10.52.14.132
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: http
+      port: 8000
+      protocol: TCP
+      targetPort: 8000
+    selector:
+      app: vllm-qwen3
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      cloud.google.com/neg: '{"ingress":true}'
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"labels":{"app":"sglang-qwen3"},"name":"qwen3-sglang-service","namespace":"llm-serving"},"spec":{"ports":[{"name":"http","port":30000,"targetPort":30000}],"selector":{"app":"sglang-qwen3"},"type":"ClusterIP"}}
+    creationTimestamp: "2026-10-22T11:03:20Z"
+    labels:
+      app: sglang-qwen3
+    name: qwen3-sglang-service
+    namespace: llm-serving
+    resourceVersion: "1792667000425311013"
+    uid: 54a37a15-90de-4835-a294-1fff659c4a10
+  spec:
+    clusterIP: 10.52.8.147
+    clusterIPs:
+    - 10.52.8.147
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: http
+      port: 30000
+      protocol: TCP
+      targetPort: 30000
+    selector:
+      app: sglang-qwen3
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+kind: List
+metadata:
+  resourceVersion: ""

@@ -16,18 +16,17 @@ providers:
 
 ports:
   web:
-    redirectTo:
-      port: websecure
+    port: 8000
+    expose:
+      default: true
+    exposedPort: 80
+    protocol: TCP
   websecure:
-    tls:
-      enabled: true
-
-certificatesResolvers:
-  letsencrypt:
-    acme:
-      email: ayenioluwatosinolawale@gmail.com
-      storage: /data/acme.json
-      tlsChallenge: {}
+    port: 8443
+    expose:
+      default: true
+    exposedPort: 443
+    protocol: TCP
 
 persistence:
   enabled: true

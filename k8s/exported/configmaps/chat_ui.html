@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AnaModel — AI Assistant</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3350;
+    --accent: #6366f1;
+    --accent-hover: #818cf8;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #f59e0b;
+    --text: #e2e8f0;
+    --text-muted: #8892b0;
+    --user-bubble: #1e293b;
+    --ai-bubble: #1a1d27;
+    --sidebar-w: 300px;
+  }
+
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         background: var(--bg); color: var(--text); height: 100dvh; display: flex; overflow: hidden; }
+
+  /* ── Sidebar ── */
+  #sidebar {
+    width: var(--sidebar-w); min-width: var(--sidebar-w);
+    background: var(--surface); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow-y: auto; z-index: 10;
+    transition: transform .3s;
+  }
+  .sidebar-header {
+    padding: 20px 16px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo { font-size: 18px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; }
+  .logo-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+  .sidebar-section { padding: 16px; border-bottom: 1px solid var(--border); }
+  .sidebar-section h3 { font-size: 11px; font-weight: 600; color: var(--text-muted);
+                         text-transform: uppercase; letter-spacing: .08em; margin-bottom: 10px; }
+  label { font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px; }
+  input[type="text"], input[type="password"], input[type="url"] {
+    width: 100%; padding: 8px 10px; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text); font-size: 13px; outline: none;
+    transition: border-color .15s;
+  }
+  input:focus { border-color: var(--accent); }
+  .integration-card {
+    border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden;
+  }
+  .integration-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px; cursor: pointer; background: var(--surface2);
+    user-select: none;
+  }
+  .integration-header:hover { background: #262b40; }
+  .integration-name { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; }
+  .integration-icon { font-size: 16px; }
+  .integration-status { width: 8px; height: 8px; border-radius: 50%; background: var(--border); transition: background .2s; }
+  .integration-status.connected { background: var(--green); }
+  .integration-fields { padding: 10px 12px; display: none; background: var(--bg); }
+  .integration-fields.open { display: block; }
+  .integration-fields input { margin-bottom: 6px; }
+  .btn-connect {
+    width: 100%; padding: 6px; background: var(--accent); border: none; border-radius: 5px;
+    color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; margin-top: 4px; transition: background .15s;
+  }
+  .btn-connect:hover { background: var(--accent-hover); }
+  .btn-disconnect { background: #374151; }
+  .btn-disconnect:hover { background: #4b5563; }
+  .new-chat-btn {
+    margin: 12px; padding: 10px; background: var(--accent); border: none; border-radius: 8px;
+    color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; transition: background .15s;
+  }
+  .new-chat-btn:hover { background: var(--accent-hover); }
+
+  /* ── Main chat area ── */
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #topbar {
+    padding: 12px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px; background: var(--surface);
+  }
+  #menu-btn { display: none; background: none; border: none; color: var(--text); font-size: 20px; cursor: pointer; }
+  .model-badge {
+    background: var(--surface2); border: 1px solid var(--border);
+    padding: 4px 10px; border-radius: 20px; font-size: 12px; color: var(--text-muted);
+  }
+  .connected-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pill {
+    padding: 3px 8px; border-radius: 20px; font-size: 11px; font-weight: 600;
+    background: #1e2d1e; color: var(--green); border: 1px solid #166534;
+  }
+
+  #messages {
+    flex: 1; overflow-y: auto; padding: 24px 20px; display: flex; flex-direction: column; gap: 20px;
+  }
+  .message { display: flex; gap: 12px; max-width: 780px; }
+  .message.user { flex-direction: row-reverse; align-self: flex-end; }
+  .message.assistant { align-self: flex-start; }
+  .avatar {
+    width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700;
+  }
+  .message.user .avatar { background: var(--accent); color: #fff; }
+  .message.assistant .avatar { background: var(--surface2); color: var(--accent); }
+  .bubble {
+    padding: 12px 16px; border-radius: 12px; font-size: 14px; line-height: 1.65;
+    max-width: calc(100% - 44px);
+  }
+  .message.user .bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 3px; }
+  .message.assistant .bubble {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-bottom-left-radius: 3px; white-space: pre-wrap; word-break: break-word;
+  }
+
+  /* Markdown */
+  .bubble strong { font-weight: 700; }
+  .bubble em { font-style: italic; }
+  .bubble code {
+    background: rgba(0,0,0,.3); padding: 1px 5px; border-radius: 4px;
+    font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px;
+  }
+  .bubble pre { background: #0d1117; padding: 12px; border-radius: 8px; overflow-x: auto; margin: 8px 0; }
+  .bubble pre code { background: none; padding: 0; font-size: 12px; }
+  .bubble ul, .bubble ol { padding-left: 20px; margin: 6px 0; }
+  .bubble li { margin: 3px 0; }
+  .bubble h1,.bubble h2,.bubble h3 { margin: 10px 0 4px; color: var(--text); }
+  .bubble a { color: var(--accent-hover); }
+  .bubble blockquote { border-left: 3px solid var(--border); padding-left: 12px; color: var(--text-muted); margin: 6px 0; }
+
+  /* Tool indicator */
+  .tool-indicator {
+    display: flex; align-items: center; gap: 8px; padding: 8px 14px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    font-size: 12px; color: var(--text-muted); margin-bottom: 6px;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  .tool-indicator .spinner {
+    width: 14px; height: 14px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 0%,100% { opacity: .7; } 50% { opacity: 1; } }
+
+  /* Welcome */
+  #welcome {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 40px 20px; text-align: center;
+  }
+  #welcome h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+  #welcome p { color: var(--text-muted); font-size: 15px; max-width: 460px; line-height: 1.6; }
+  .example-prompts { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 24px; max-width: 600px; }
+  .example-prompt {
+    padding: 10px 16px; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; font-size: 13px; cursor: pointer; transition: border-color .15s, background .15s;
+    text-align: left;
+  }
+  .example-prompt:hover { border-color: var(--accent); background: #1e2035; }
+
+  /* Input area */
+  #input-area {
+    padding: 16px 20px; border-top: 1px solid var(--border); background: var(--surface);
+  }
+  .input-wrap {
+    display: flex; gap: 10px; align-items: flex-end;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 10px 14px; transition: border-color .15s;
+  }
+  .input-wrap:focus-within { border-color: var(--accent); }
+  #user-input {
+    flex: 1; background: none; border: none; outline: none; color: var(--text);
+    font-size: 14px; resize: none; max-height: 160px; line-height: 1.5;
+    font-family: inherit;
+  }
+  #user-input::placeholder { color: var(--text-muted); }
+  #send-btn {
+    width: 36px; height: 36px; border-radius: 8px; background: var(--accent);
+    border: none; color: #fff; cursor: pointer; display: flex; align-items: center;
+    justify-content: center; flex-shrink: 0; transition: background .15s;
+  }
+  #send-btn:hover { background: var(--accent-hover); }
+  #send-btn:disabled { background: var(--border); cursor: not-allowed; }
+  .input-hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; text-align: center; }
+
+  /* Mobile */
+  @media (max-width: 640px) {
+    #sidebar { position: fixed; top: 0; left: 0; height: 100%; transform: translateX(-100%); }
+    #sidebar.open { transform: translateX(0); }
+    #menu-btn { display: block; }
+    #overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 9; }
+    #overlay.show { display: block; }
+  }
+</style>
+</head>
+<body>
+
+<div id="overlay" onclick="closeSidebar()"></div>
+
+<!-- Sidebar -->
+<div id="sidebar">
+  <div class="sidebar-header">
+    <div class="logo"><div class="logo-dot"></div>AnaModel</div>
+  </div>
+
+  <button class="new-chat-btn" onclick="newChat()">+ New Chat</button>
+
+  <div class="sidebar-section">
+    <h3>Connect your apps</h3>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
+      Connect your apps and I'll take actions on your behalf — create issues, send messages, query your database, and more.
+    </p>
+
+    <!-- GitHub -->
+    <div class="integration-card" id="int-github">
+      <div class="integration-header" onclick="toggleIntegration('github')">
+        <div class="integration-name"><span class="integration-icon">🐙</span>GitHub</div>
+        <div class="integration-status" id="status-github"></div>
+      </div>
+      <div class="integration-fields" id="fields-github">
+        <label>Personal Access Token</label>
+        <input type="password" id="github-token" placeholder="ghp_xxxxxxxxxxxx">
+        <button class="btn-connect" onclick="connectIntegration('github')">Connect GitHub</button>
+      </div>
+    </div>
+
+    <!-- Stripe -->
+    <div class="integration-card" id="int-stripe">
+      <div class="integration-header" onclick="toggleIntegration('stripe')">
+        <div class="integration-name"><span class="integration-icon">💳</span>Stripe</div>
+        <div class="integration-status" id="status-stripe"></div>
+      </div>
+      <div class="integration-fields" id="fields-stripe">
+        <label>API Key</label>
+        <input type="password" id="stripe-key" placeholder="sk_live_xxxx or sk_test_xxxx">
+        <button class="btn-connect" onclick="connectIntegration('stripe')">Connect Stripe</button>
+      </div>
+    </div>
+
+    <!-- Supabase -->
+    <div class="integration-card" id="int-supabase">
+      <div class="integration-header" onclick="toggleIntegration('supabase')">
+        <div class="integration-name"><span class="integration-icon">🟢</span>Supabase</div>
+        <div class="integration-status" id="status-supabase"></div>
+      </div>
+      <div class="integration-fields" id="fields-supabase">
+        <label>Project URL</label>
+        <input type="url" id="supabase-url" placeholder="https://xxxx.supabase.co">
+        <label>Anon/Service Key</label>
+        <input type="password" id="supabase-key" placeholder="eyJhbGciOiJIUzI1NiIs...">
+        <button class="btn-connect" onclick="connectIntegration('supabase')">Connect Supabase</button>
+      </div>
+    </div>
+
+    <!-- Slack -->
+    <div class="integration-card" id="int-slack">
+      <div class="integration-header" onclick="toggleIntegration('slack')">
+        <div class="integration-name"><span class="integration-icon">💬</span>Slack</div>
+        <div class="integration-status" id="status-slack"></div>
+      </div>
+      <div class="integration-fields" id="fields-slack">
+        <label>Bot Token</label>
+        <input type="password" id="slack-token" placeholder="xoxb-xxxxxxxxxxxx">
+        <button class="btn-connect" onclick="connectIntegration('slack')">Connect Slack</button>
+      </div>
+    </div>
+
+    <!-- Notion -->
+    <div class="integration-card" id="int-notion">
+      <div class="integration-header" onclick="toggleIntegration('notion')">
+        <div class="integration-name"><span class="integration-icon">📝</span>Notion</div>
+        <div class="integration-status" id="status-notion"></div>
+      </div>
+      <div class="integration-fields" id="fields-notion">
+        <label>Integration Token</label>
+        <input type="password" id="notion-token" placeholder="secret_xxxxxxxxxxxx">
+        <button class="btn-connect" onclick="connectIntegration('notion')">Connect Notion</button>
+      </div>
+    </div>
+
+    <!-- Linear -->
+    <div class="integration-card" id="int-linear">
+      <div class="integration-header" onclick="toggleIntegration('linear')">
+        <div class="integration-name"><span class="integration-icon">📐</span>Linear</div>
+        <div class="integration-status" id="status-linear"></div>
+      </div>
+      <div class="integration-fields" id="fields-linear">
+        <label>API Key</label>
+        <input type="password" id="linear-key" placeholder="lin_api_xxxxxxxxxxxx">
+        <button class="btn-connect" onclick="connectIntegration('linear')">Connect Linear</button>
+      </div>
+    </div>
+
+    <!-- Resend (Email) -->
+    <div class="integration-card" id="int-resend">
+      <div class="integration-header" onclick="toggleIntegration('resend')">
+        <div class="integration-name"><span class="integration-icon">📧</span>Email (Resend)</div>
+        <div class="integration-status" id="status-resend"></div>
+      </div>
+      <div class="integration-fields" id="fields-resend">
+        <label>API Key</label>
+        <input type="password" id="resend-key" placeholder="re_xxxxxxxxxxxx">
+        <label>From Email</label>
+        <input type="text" id="resend-from" placeholder="you@yourdomain.com">
+        <button class="btn-connect" onclick="connectIntegration('resend')">Connect Email</button>
+      </div>
+    </div>
+
+    <!-- Custom API -->
+    <div class="integration-card" id="int-http_api">
+      <div class="integration-header" onclick="toggleIntegration('http_api')">
+        <div class="integration-name"><span class="integration-icon">🔌</span>Custom API</div>
+        <div class="integration-status" id="status-http_api"></div>
+      </div>
+      <div class="integration-fields" id="fields-http_api">
+        <label>Base URL</label>
+        <input type="url" id="api-base-url" placeholder="https://api.yourservice.com">
+        <label>Auth Header</label>
+        <input type="text" id="api-auth" placeholder="Bearer your_token_here">
+        <button class="btn-connect" onclick="connectIntegration('http_api')">Connect API</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Main -->
+<div id="main">
+  <div id="topbar">
+    <button id="menu-btn" onclick="openSidebar()">☰</button>
+    <div class="model-badge">AnaModel</div>
+    <div class="connected-pills" id="connected-pills"></div>
+  </div>
+
+  <div id="messages">
+    <div id="welcome">
+      <h1>How can I help you today?</h1>
+      <p>Ask me anything. I can search the web, check live data, and take actions in your connected apps.</p>
+      <div class="example-prompts">
+        <div class="example-prompt" onclick="sendPrompt(this)">What's the weather in Lagos right now?</div>
+        <div class="example-prompt" onclick="sendPrompt(this)">What's happening in Nigeria today?</div>
+        <div class="example-prompt" onclick="sendPrompt(this)">What is the Bitcoin price?</div>
+        <div class="example-prompt" onclick="sendPrompt(this)">Summarise the latest tech news</div>
+        <div class="example-prompt" onclick="sendPrompt(this)">List my GitHub repos and open issues</div>
+        <div class="example-prompt" onclick="sendPrompt(this)">Show my Stripe balance and last 5 payments</div>
+        <div class="example-prompt" onclick="sendPrompt(this)">Send a Slack message to #general: Server is back online ✅</div>
+        <div class="example-prompt" onclick="sendPrompt(this)">Create a Linear issue: Payment page crashes on Safari</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="input-area">
+    <div class="input-wrap">
+      <textarea id="user-input" placeholder="Message AnaModel..." rows="1"
+        onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      <button id="send-btn" onclick="sendMessage()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <line x1="22" y1="2" x2="11" y2="13"></line>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+        </svg>
+      </button>
+    </div>
+    <div class="input-hint">Enter to send · Shift+Enter for new line</div>
+  </div>
+</div>
+
+<script>
+const API_BASE = window.location.origin.replace('/chat', '');
+const API_KEY = 'sk-b0454325deddc837764f88240c8f7986';
+let messages = [];
+let integrations = {};
+let isStreaming = false;
+
+function loadSettings() {
+  const saved = JSON.parse(localStorage.getItem('anamodel_integrations') || '{}');
+  integrations = saved;
+  restoreIntegrationFields();
+  updateConnectedPills();
+}
+
+function restoreIntegrationFields() {
+  if (integrations.github) {
+    document.getElementById('github-token').value = integrations.github.token || '';
+    markConnected('github');
+  }
+  if (integrations.stripe) {
+    document.getElementById('stripe-key').value = integrations.stripe.api_key || '';
+    markConnected('stripe');
+  }
+  if (integrations.supabase) {
+    document.getElementById('supabase-url').value = integrations.supabase.url || '';
+    document.getElementById('supabase-key').value = integrations.supabase.anon_key || '';
+    markConnected('supabase');
+  }
+  if (integrations.slack) {
+    document.getElementById('slack-token').value = integrations.slack.token || '';
+    markConnected('slack');
+  }
+  if (integrations.notion) {
+    document.getElementById('notion-token').value = integrations.notion.token || '';
+    markConnected('notion');
+  }
+  if (integrations.linear) {
+    document.getElementById('linear-key').value = integrations.linear.api_key || '';
+    markConnected('linear');
+  }
+  if (integrations.resend) {
+    document.getElementById('resend-key').value = integrations.resend.api_key || '';
+    document.getElementById('resend-from').value = integrations.resend.from_email || '';
+    markConnected('resend');
+  }
+  if (integrations.http_api) {
+    document.getElementById('api-base-url').value = integrations.http_api.base_url || '';
+    document.getElementById('api-auth').value = integrations.http_api.auth_header || '';
+    markConnected('http_api');
+  }
+}
+
+// ── Integration UI ────────────────────────────────────────────────────────────
+
+function toggleIntegration(name) {
+  const fields = document.getElementById('fields-' + name);
+  fields.classList.toggle('open');
+}
+
+function connectIntegration(name) {
+  let cfg = {};
+  if (name === 'github') {
+    const t = document.getElementById('github-token').value.trim();
+    if (!t) return alert('Enter your GitHub token');
+    cfg = { token: t };
+  } else if (name === 'stripe') {
+    const k = document.getElementById('stripe-key').value.trim();
+    if (!k) return alert('Enter your Stripe API key');
+    cfg = { api_key: k };
+  } else if (name === 'supabase') {
+    const u = document.getElementById('supabase-url').value.trim();
+    const k = document.getElementById('supabase-key').value.trim();
+    if (!u || !k) return alert('Enter both URL and key');
+    cfg = { url: u, anon_key: k };
+  } else if (name === 'slack') {
+    const t = document.getElementById('slack-token').value.trim();
+    if (!t) return alert('Enter your Slack bot token');
+    cfg = { token: t };
+  } else if (name === 'notion') {
+    const t = document.getElementById('notion-token').value.trim();
+    if (!t) return alert('Enter your Notion token');
+    cfg = { token: t };
+  } else if (name === 'linear') {
+    const k = document.getElementById('linear-key').value.trim();
+    if (!k) return alert('Enter your Linear API key');
+    cfg = { api_key: k };
+  } else if (name === 'resend') {
+    const k = document.getElementById('resend-key').value.trim();
+    const f = document.getElementById('resend-from').value.trim();
+    if (!k) return alert('Enter your Resend API key');
+    cfg = { api_key: k, from_email: f };
+  } else if (name === 'http_api') {
+    const u = document.getElementById('api-base-url').value.trim();
+    const a = document.getElementById('api-auth').value.trim();
+    if (!u) return alert('Enter the base URL');
+    cfg = { base_url: u, auth_header: a };
+  }
+
+  if (integrations[name]) {
+    delete integrations[name];
+    unmarkConnected(name);
+    document.getElementById('fields-' + name).classList.remove('open');
+  } else {
+    integrations[name] = cfg;
+    markConnected(name);
+    document.getElementById('fields-' + name).classList.remove('open');
+  }
+  localStorage.setItem('anamodel_integrations', JSON.stringify(integrations));
+  updateConnectedPills();
+}
+
+function markConnected(name) {
+  const el = document.getElementById('status-' + name);
+  if (el) el.classList.add('connected');
+  const btn = document.querySelector(`#fields-${name} .btn-connect`);
+  if (btn) { btn.textContent = 'Disconnect'; btn.classList.add('btn-disconnect'); }
+}
+
+function unmarkConnected(name) {
+  const el = document.getElementById('status-' + name);
+  if (el) el.classList.remove('connected');
+  const btn = document.querySelector(`#fields-${name} .btn-connect`);
+  if (btn) {
+    const labels = {github:'Connect GitHub',stripe:'Connect Stripe',supabase:'Connect Supabase',
+                    slack:'Connect Slack',notion:'Connect Notion',linear:'Connect Linear',
+                    resend:'Connect Email',http_api:'Connect API'};
+    btn.textContent = labels[name] || 'Connect';
+    btn.classList.remove('btn-disconnect');
+  }
+}
+
+function updateConnectedPills() {
+  const pills = document.getElementById('connected-pills');
+  const names = {github:'GitHub',stripe:'Stripe',supabase:'Supabase',slack:'Slack',
+                  notion:'Notion',linear:'Linear',resend:'Email',http_api:'API'};
+  pills.innerHTML = Object.keys(integrations).map(k =>
+    `<span class="pill">${names[k] || k}</span>`).join('');
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+
+function newChat() {
+  messages = [];
+  document.getElementById('messages').innerHTML = '';
+  document.getElementById('welcome').style.display = '';
+  document.getElementById('messages').appendChild(document.getElementById('welcome'));
+  closeSidebar();
+}
+
+function sendPrompt(el) {
+  const text = el.textContent.replace(/^[^\w]+/, '').trim();
+  document.getElementById('user-input').value = text;
+  sendMessage();
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+}
+
+async function sendMessage() {
+  if (isStreaming) return;
+  const input = document.getElementById('user-input');
+  const text = input.value.trim();
+  if (!text) return;
+
+  // Hide welcome
+  const welcome = document.getElementById('welcome');
+  if (welcome.style.display !== 'none') welcome.style.display = 'none';
+
+  input.value = '';
+  input.style.height = 'auto';
+  messages.push({ role: 'user', content: text });
+
+  appendMessage('user', text);
+
+  const aiBubble = appendMessage('assistant', '');
+  const bubbleEl = aiBubble.querySelector('.bubble');
+
+  isStreaming = true;
+  document.getElementById('send-btn').disabled = true;
+
+  // Show tool indicator
+  const indicator = document.createElement('div');
+  indicator.className = 'tool-indicator';
+  indicator.innerHTML = '<div class="spinner"></div><span>Thinking...</span>';
+  bubbleEl.parentElement.insertBefore(indicator, bubbleEl);
+
+  let fullText = '';
+
+  try {
+    const res = await fetch(`${API_BASE}/agent/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'AnaModel',
+        messages: messages.slice(-20),
+        stream: true,
+        integrations: Object.keys(integrations).length ? integrations : undefined,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      bubbleEl.textContent = `Error: ${res.status} — ${err}`;
+      indicator.remove();
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let indicatorRemoved = false;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') break;
+        try {
+          const chunk = JSON.parse(data);
+          const token = chunk.choices?.[0]?.delta?.content || '';
+          if (token) {
+            if (!indicatorRemoved) { indicator.remove(); indicatorRemoved = true; }
+            fullText += token;
+            bubbleEl.innerHTML = renderMarkdown(fullText);
+            scrollToBottom();
+          }
+        } catch {}
+      }
+    }
+  } catch (err) {
+    bubbleEl.textContent = `Connection error: ${err.message}`;
+  } finally {
+    indicator.remove();
+    isStreaming = false;
+    document.getElementById('send-btn').disabled = false;
+    if (fullText) messages.push({ role: 'assistant', content: fullText });
+  }
+}
+
+function appendMessage(role, text) {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = `message ${role}`;
+  div.innerHTML = `
+    <div class="avatar">${role === 'user' ? 'U' : 'A'}</div>
+    <div class="bubble">${role === 'user' ? escapeHtml(text) : renderMarkdown(text)}</div>
+  `;
+  msgs.appendChild(div);
+  scrollToBottom();
+  return div;
+}
+
+function scrollToBottom() {
+  const msgs = document.getElementById('messages');
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function escapeHtml(t) {
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderMarkdown(text) {
+  // Code blocks
+  text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
+    `<pre><code class="lang-${lang}">${escapeHtml(code.trim())}</code></pre>`);
+  // Inline code
+  text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Bold
+  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // Italic
+  text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  // Headers
+  text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  text = text.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  text = text.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  // Blockquote
+  text = text.replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>');
+  // Unordered list
+  text = text.replace(/^[\-\*] (.+)$/gm, '<li>$1</li>');
+  text = text.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+  // Links
+  text = text.replace(/\[([^\]]+)\]\((https?[^\)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+  // Line breaks
+  text = text.replace(/\n/g, '<br>');
+  return text;
+}
+
+// ── Mobile sidebar ────────────────────────────────────────────────────────────
+
+function openSidebar() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('overlay').classList.add('show');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('overlay').classList.remove('show');
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+loadSettings();
+document.getElementById('user-input').focus();
+</script>
+</body>
+</html>

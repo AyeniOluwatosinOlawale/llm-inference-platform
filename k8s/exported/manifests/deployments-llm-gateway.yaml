@@ -1,0 +1,425 @@
+apiVersion: v1
+items:
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "23"
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"anamodel-agent-server"},"name":"anamodel-agent-server","namespace":"llm-gateway"},"spec":{"replicas":2,"selector":{"matchLabels":{"app":"anamodel-agent-server"}},"template":{"metadata":{"labels":{"app":"anamodel-agent-server"}},"spec":{"containers":[{"command":["sh","-c","export PYTHONPATH=/deps:$PYTHONPATH\npython /app/agent_server.py\n"],"env":[{"name":"LITELLM_API_KEY","valueFrom":{"secretKeyRef":{"key":"LITELLM_MASTER_KEY","name":"litellm-secrets"}}},{"name":"LITELLM_BASE_URL","value":"http://litellm-proxy-service.llm-gateway.svc.cluster.local/v1"},{"name":"TAVILY_API_KEY","valueFrom":{"secretKeyRef":{"key":"TAVILY_API_KEY","name":"agent-server-secrets"}}}],"image":"python:3.11-slim","livenessProbe":{"failureThreshold":3,"httpGet":{"path":"/","port":8080},"initialDelaySeconds":30,"periodSeconds":30},"name":"agent-server","ports":[{"containerPort":8080,"name":"http"}],"readinessProbe":{"failureThreshold":3,"httpGet":{"path":"/","port":8080},"initialDelaySeconds":15,"periodSeconds":10},"resources":{"limits":{"cpu":"1","memory":"1Gi"},"requests":{"cpu":"500m","memory":"512Mi"}},"securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"runAsNonRoot":true,"runAsUser":1000},"volumeMounts":[{"mountPath":"/app","name":"app-code"},{"mountPath":"/deps","name":"deps"}]}],"initContainers":[{"command":["sh","-c","pip install --quiet --target /deps \\\n  fastapi==0.111.0 \\\n  uvicorn==0.30.1 \\\n  \"openai\u003e=1.52.0\" \\\n  tavily-python==0.3.3 \\\n  ddgs \\\n  slowapi==0.1.9\n"],"image":"python:3.11-slim","name":"install-deps","volumeMounts":[{"mountPath":"/deps","name":"deps"}]}],"volumes":[{"configMap":{"name":"anamodel-agent-code"},"name":"app-code"},{"emptyDir":{},"name":"deps"}]}}}}
+    creationTimestamp: "2026-10-22T10:33:36Z"
+    generation: 23
+    labels:
+      app: anamodel-agent-server
+    name: anamodel-agent-server
+    namespace: llm-gateway
+    resourceVersion: "1792697243521071011"
+    uid: 6f35a8a2-ced7-4d34-b53a-949a4ecec377
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 2
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: anamodel-agent-server
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: "2026-10-22T19:25:04Z"
+        labels:
+          app: anamodel-agent-server
+      spec:
+        containers:
+        - command:
+          - sh
+          - -c
+          - |
+            export PYTHONPATH=/deps:$PYTHONPATH
+            python /app/agent_server.py
+          env:
+          - name: LITELLM_API_KEY
+            valueFrom:
+              secretKeyRef:
+                key: LITELLM_MASTER_KEY
+                name: litellm-secrets
+          - name: LITELLM_BASE_URL
+            value: http://litellm-proxy-service.llm-gateway.svc.cluster.local/v1
+          - name: TAVILY_API_KEY
+            valueFrom:
+              secretKeyRef:
+                key: TAVILY_API_KEY
+                name: agent-server-secrets
+          image: python:3.11-slim
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: agent-server
+          ports:
+          - containerPort: 8080
+            name: http
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            limits:
+              cpu: "1"
+              memory: 1Gi
+            requests:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /app
+            name: app-code
+          - mountPath: /deps
+            name: deps
+        dnsPolicy: ClusterFirst
+        initContainers:
+        - command:
+          - sh
+          - -c
+          - |
+            pip install --quiet --target /deps \
+              fastapi==0.111.0 \
+              uvicorn==0.30.1 \
+              "openai>=1.52.0" \
+              tavily-python==0.3.3 \
+              ddgs \
+              slowapi==0.1.9
+          image: python:3.11-slim
+          imagePullPolicy: IfNotPresent
+          name: install-deps
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /deps
+            name: deps
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - configMap:
+            defaultMode: 420
+            name: anamodel-agent-code
+          name: app-code
+        - emptyDir: {}
+          name: deps
+  status:
+    availableReplicas: 2
+    conditions:
+    - lastTransitionTime: "2026-10-22T19:08:57Z"
+      lastUpdateTime: "2026-10-22T19:08:57Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    - lastTransitionTime: "2026-10-22T16:56:00Z"
+      lastUpdateTime: "2026-10-22T19:26:53Z"
+      message: ReplicaSet "anamodel-agent-server-68b8f6d668" has successfully progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    observedGeneration: 23
+    readyReplicas: 2
+    replicas: 2
+    terminatingReplicas: 0
+    updatedReplicas: 2
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "21"
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"litellm-proxy"},"name":"litellm-proxy","namespace":"llm-gateway"},"spec":{"replicas":2,"selector":{"matchLabels":{"app":"litellm-proxy"}},"template":{"metadata":{"annotations":{"prometheus.io/path":"/metrics","prometheus.io/port":"4000","prometheus.io/scrape":"true"},"labels":{"app":"litellm-proxy"}},"spec":{"containers":[{"args":["--config=/etc/litellm/config.yaml","--port=4000"],"env":[{"name":"LITELLM_MASTER_KEY","valueFrom":{"secretKeyRef":{"key":"LITELLM_MASTER_KEY","name":"litellm-secrets"}}},{"name":"REDIS_PASSWORD","valueFrom":{"secretKeyRef":{"key":"REDIS_PASSWORD","name":"litellm-secrets"}}},{"name":"DATABASE_URL","valueFrom":{"secretKeyRef":{"key":"DATABASE_URL","name":"litellm-secrets"}}},{"name":"OTEL_EXPORTER_OTLP_ENDPOINT","value":"http://opentelemetry-collector.monitoring.svc.cluster.local:4317"},{"name":"OTEL_SERVICE_NAME","value":"litellm-proxy"},{"name":"OTEL_TRACES_EXPORTER","value":"otlp"},{"name":"HOME","value":"/tmp"},{"name":"PRISMA_BINARY_CACHE_DIR","value":"/tmp/prisma-cache"}],"image":"ghcr.io/berriai/litellm:main-v1.40.0","livenessProbe":{"failureThreshold":3,"httpGet":{"path":"/health/liveliness","port":4000},"initialDelaySeconds":30,"periodSeconds":30},"name":"litellm","ports":[{"containerPort":4000,"name":"http"}],"readinessProbe":{"failureThreshold":3,"httpGet":{"path":"/health/readiness","port":4000},"initialDelaySeconds":15,"periodSeconds":10},"resources":{"limits":{"cpu":"2","memory":"2Gi"},"requests":{"cpu":"1","memory":"1Gi"}},"securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}},"volumeMounts":[{"mountPath":"/etc/litellm/config.yaml","name":"config","readOnly":true,"subPath":"config.yaml"},{"mountPath":"/etc/litellm/callbacks.py","name":"callbacks","readOnly":true,"subPath":"callbacks.py"},{"mountPath":"/tmp/prisma-cache","name":"prisma-cache"}]}],"volumes":[{"configMap":{"name":"litellm-config"},"name":"config"},{"configMap":{"name":"litellm-callbacks"},"name":"callbacks"},{"emptyDir":{},"name":"prisma-cache"}]}}}}
+    creationTimestamp: "2026-10-22T05:12:21Z"
+    generation: 21
+    labels:
+      app: litellm-proxy
+    name: litellm-proxy
+    namespace: llm-gateway
+    resourceVersion: "1793080502332175006"
+    uid: 8d4ce154-b31d-45ca-8f27-fc675239695d
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 2
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: litellm-proxy
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: "2026-10-24T13:43:44+01:00"
+          prometheus.io/path: /metrics
+          prometheus.io/port: "4000"
+          prometheus.io/scrape: "true"
+        labels:
+          app: litellm-proxy
+      spec:
+        containers:
+        - args:
+          - --config=/etc/litellm/config.yaml
+          - --port=4000
+          env:
+          - name: LITELLM_MASTER_KEY
+            valueFrom:
+              secretKeyRef:
+                key: LITELLM_MASTER_KEY
+                name: litellm-secrets
+          - name: REDIS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: REDIS_PASSWORD
+                name: litellm-secrets
+          - name: DATABASE_URL
+            valueFrom:
+              secretKeyRef:
+                key: DATABASE_URL
+                name: litellm-secrets
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://opentelemetry-collector.monitoring.svc.cluster.local:4317
+          - name: OTEL_SERVICE_NAME
+            value: litellm-proxy
+          - name: OTEL_TRACES_EXPORTER
+            value: otlp
+          - name: HOME
+            value: /tmp
+          - name: PRISMA_BINARY_CACHE_DIR
+            value: /tmp/prisma-cache
+          image: ghcr.io/berriai/litellm:main-v1.40.0
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health/liveliness
+              port: 4000
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: litellm
+          ports:
+          - containerPort: 4000
+            name: http
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health/readiness
+              port: 4000
+              scheme: HTTP
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+            requests:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /etc/litellm/config.yaml
+            name: config
+            readOnly: true
+            subPath: config.yaml
+          - mountPath: /etc/litellm/callbacks.py
+            name: callbacks
+            readOnly: true
+            subPath: callbacks.py
+          - mountPath: /tmp/prisma-cache
+            name: prisma-cache
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - configMap:
+            defaultMode: 420
+            name: litellm-config
+          name: config
+        - configMap:
+            defaultMode: 420
+            name: litellm-callbacks
+          name: callbacks
+        - emptyDir: {}
+          name: prisma-cache
+  status:
+    availableReplicas: 2
+    conditions:
+    - lastTransitionTime: "2026-10-22T18:54:59Z"
+      lastUpdateTime: "2026-10-24T12:44:34Z"
+      message: ReplicaSet "litellm-proxy-686c78cbff" has successfully progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    - lastTransitionTime: "2026-10-27T05:55:02Z"
+      lastUpdateTime: "2026-10-27T05:55:02Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    observedGeneration: 21
+    readyReplicas: 2
+    replicas: 2
+    terminatingReplicas: 0
+    updatedReplicas: 2
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "2"
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"redis"},"name":"redis","namespace":"llm-gateway"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"redis"}},"template":{"metadata":{"labels":{"app":"redis"}},"spec":{"containers":[{"command":["redis-server","/etc/redis/redis.conf","--requirepass","$(REDIS_PASSWORD)"],"env":[{"name":"REDIS_PASSWORD","valueFrom":{"secretKeyRef":{"key":"REDIS_PASSWORD","name":"litellm-secrets"}}}],"image":"redis:7-alpine","livenessProbe":{"exec":{"command":["sh","-c","redis-cli -a \"$REDIS_PASSWORD\" ping | grep PONG"]},"initialDelaySeconds":10,"periodSeconds":15},"name":"redis","ports":[{"containerPort":6379}],"resources":{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"250m","memory":"256Mi"}},"volumeMounts":[{"mountPath":"/etc/redis","name":"config"},{"mountPath":"/data","name":"data"}]}],"volumes":[{"configMap":{"name":"redis-config"},"name":"config"},{"name":"data","persistentVolumeClaim":{"claimName":"redis-data-pvc"}}]}}}}
+    creationTimestamp: "2026-10-22T05:12:08Z"
+    generation: 2
+    labels:
+      app: redis
+    name: redis
+    namespace: llm-gateway
+    resourceVersion: "1793080472280239022"
+    uid: c1d25719-47de-413e-83ce-67d30ea1429b
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: redis
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: "2026-10-22T18:01:08+01:00"
+        labels:
+          app: redis
+      spec:
+        containers:
+        - command:
+          - redis-server
+          - /etc/redis/redis.conf
+          - --requirepass
+          - $(REDIS_PASSWORD)
+          env:
+          - name: REDIS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: REDIS_PASSWORD
+                name: litellm-secrets
+          image: redis:7-alpine
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            exec:
+              command:
+              - sh
+              - -c
+              - redis-cli -a "$REDIS_PASSWORD" ping | grep PONG
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: redis
+          ports:
+          - containerPort: 6379
+            protocol: TCP
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 250m
+              memory: 256Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /etc/redis
+            name: config
+          - mountPath: /data
+            name: data
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - configMap:
+            defaultMode: 420
+            name: redis-config
+          name: config
+        - name: data
+          persistentVolumeClaim:
+            claimName: redis-data-pvc
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2026-10-22T05:12:08Z"
+      lastUpdateTime: "2026-10-22T17:01:10Z"
+      message: ReplicaSet "redis-95dfcdc86" has successfully progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    - lastTransitionTime: "2026-10-27T05:54:32Z"
+      lastUpdateTime: "2026-10-27T05:54:32Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    observedGeneration: 2
+    readyReplicas: 1
+    replicas: 1
+    terminatingReplicas: 0
+    updatedReplicas: 1
+kind: List
+metadata:
+  resourceVersion: ""
